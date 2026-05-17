@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/generate-pdf.py": {
+      "runtime": "python3.12",
+      "maxDuration": 30
+    }
+  }
+}
