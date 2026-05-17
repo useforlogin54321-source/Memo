@@ -1,7 +1,1 @@
-{
-  "functions": {
-    "api/generate-pdf.py": {
-      "maxDuration": 30
-    }
-  }
-}
+{"functions":{"src/app/api/generate-pdf/route.js":{"maxDuration":30}}}
