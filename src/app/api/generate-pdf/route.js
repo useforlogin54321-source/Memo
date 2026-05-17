@@ -11,6 +11,17 @@ function parseDate(iso) {
   } catch { return new Date().toLocaleString('en-IN') }
 }
 
+async function fetchImage(url) {
+  if (!url) return null
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.arrayBuffer()
+  } catch {
+    return null
+  }
+}
+
 export async function POST(req) {
   try {
     const { memo, items = [], firm, firmData = {}, customer = {}, subtotal = 0, gstAmt = 0, total = 0, memoType = 'sale' } = await req.json()
@@ -22,6 +33,28 @@ export async function POST(req) {
     
     const { width, height } = page.getSize()
     let y = height - 60
+
+    // Embed logo if available
+    let logoImg = null
+    if (firmData.logo_url) {
+      const logoBytes = await fetchImage(firmData.logo_url)
+      if (logoBytes) {
+        try {
+          logoImg = firmData.logo_url.toLowerCase().endsWith('.png') 
+            ? await doc.embedPng(logoBytes)
+            : await doc.embedJpg(logoBytes)
+        } catch (e) {
+          console.error('Logo embed failed:', e)
+        }
+      }
+    }
+
+    // Draw logo if embedded
+    if (logoImg) {
+      const logoHeight = 50
+      const logoWidth = (logoImg.width / logoImg.height) * logoHeight
+      page.drawImage(logoImg, { x: 50, y: y - logoHeight + 10, width: logoWidth, height: logoHeight })
+    }
 
     page.drawText(firmData.name || firm, { x: 50, y, size: 22, font: fontBold, color: rgb(0.067, 0.094, 0.153) })
     page.drawText(memoType === 'order' ? 'ORDER MEMO' : 'SALE MEMO', { x: width - 180, y, size: 13, font: fontBold, color: rgb(0.216, 0.255, 0.318) })
@@ -84,8 +117,30 @@ export async function POST(req) {
     page.drawText(inr(total), { x: 485, y, size: 12, font: fontBold, color: rgb(0.067, 0.094, 0.153) })
     y -= 35
 
+    // Embed QR code if available
+    let qrImg = null
+    if (firmData.qr_code_url) {
+      const qrBytes = await fetchImage(firmData.qr_code_url)
+      if (qrBytes) {
+        try {
+          qrImg = firmData.qr_code_url.toLowerCase().endsWith('.png')
+            ? await doc.embedPng(qrBytes)
+            : await doc.embedJpg(qrBytes)
+        } catch (e) {
+          console.error('QR embed failed:', e)
+        }
+      }
+    }
+
     page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, thickness: 0.5, color: rgb(0.898, 0.906, 0.918) })
     y -= 12
+
+    // Draw QR code at bottom right
+    if (qrImg) {
+      const qrSize = 80
+      page.drawImage(qrImg, { x: width - 130, y: 50, width: qrSize, height: qrSize })
+    }
+
     const footerNote = firmData.footer_note || 'Thank you for your business!'
     page.drawText(footerNote, { x: width / 2 - (footerNote.length * 2.5), y, size: 8, font, color: rgb(0.608, 0.639, 0.686) })
     y -= 13
@@ -100,4 +155,4 @@ export async function POST(req) {
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 })
   }
-        }
+}
