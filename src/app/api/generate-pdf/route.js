@@ -7,10 +7,8 @@ const inr = (n) => `Rs. ${Number(n).toLocaleString('en-IN', { minimumFractionDig
 
 function parseDate(iso) {
   try {
-    return new Date(iso).toLocaleString('en-IN', { 
-      day: '2-digit', month: '2-digit', year: 'numeric' 
-    }).replace(/\//g, '/')
-  } catch { return new Date().toLocaleString('en-IN') }
+    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  } catch { return new Date().toLocaleDateString('en-IN') }
 }
 
 async function fetchImage(url) {
@@ -20,6 +18,23 @@ async function fetchImage(url) {
     if (!res.ok) return null
     return await res.arrayBuffer()
   } catch { return null }
+}
+
+function drawBox(page, x, y, w, h, opts = {}) {
+  page.drawRectangle({ 
+    x, y, width: w, height: h, 
+    borderColor: opts.borderColor || rgb(0, 0, 0), 
+    borderWidth: opts.borderWidth || 0.75,
+    color: opts.fillColor 
+  })
+}
+
+function drawCell(page, text, x, y, w, h, font, size = 9, opts = {}) {
+  drawBox(page, x, y, w, h, opts)
+  const textY = y + h / 2 - size / 3
+  const textX = opts.align === 'right' ? x + w - page.getFont().widthOfTextAtSize(text, size) - 4 : 
+                opts.align === 'center' ? x + (w - page.getFont().widthOfTextAtSize(text, size)) / 2 : x + 4
+  page.drawText(text, { x: textX, y: textY, size, font, color: opts.color || rgb(0, 0, 0) })
 }
 
 export async function POST(req) {
@@ -32,190 +47,188 @@ export async function POST(req) {
     const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
     
     const { width, height } = page.getSize()
-    const navy = rgb(0.102, 0.137, 0.176)
-    const gold = rgb(0.804, 0.686, 0.510)
-    const gray = rgb(0.45, 0.45, 0.45)
-    const lightGray = rgb(0.95, 0.95, 0.95)
-    let y = height - 40
+    const margin = 30
+    const contentWidth = width - (2 * margin)
+    let y = height - 50
 
-    // === HEADER BAND ===
-    page.drawRectangle({ x: 0, y: height - 100, width, height: 100, color: navy })
-
-    // Logo in header
-    let logoImg = null
+    // === LOGO ONLY ===
     if (firmData.logo_url) {
       const logoBytes = await fetchImage(firmData.logo_url)
       if (logoBytes) {
         try {
           const isPng = firmData.logo_url.toLowerCase().includes('.png')
-          logoImg = isPng ? await doc.embedPng(logoBytes) : await doc.embedJpg(logoBytes)
+          const logoImg = isPng ? await doc.embedPng(logoBytes) : await doc.embedJpg(logoBytes)
           const logoH = 60
           const logoW = (logoImg.width / logoImg.height) * logoH
-          page.drawImage(logoImg, { x: 40, y: height - 90, width: logoW, height: logoH })
+          page.drawImage(logoImg, { x: margin, y: y - logoH, width: logoW, height: logoH })
         } catch (e) {
-          console.error('Logo embed error:', e)
+          console.error('Logo error:', e)
         }
       }
     }
 
-    // Company name in gold
-    page.drawText(firmData.name || firm, { x: 40, y: height - 55, size: 20, font: fontBold, color: gold })
+    y -= 75
 
+    // === HEADER BOX - Company Info ===
+    const headerHeight = 60
+    drawBox(page, margin, y - headerHeight, contentWidth, headerHeight)
+    
+    let infoY = y - 15
+    page.drawText(firmData.address || '289, M.G. Road, 1st Floor, Pune 411001', { x: margin + 8, y: infoY, size: 8, font })
+    infoY -= 12
+    page.drawText(`Tel: ${firmData.phone_number || '26132509'}   Mob: ${firmData.phone_number || '7385299464'}`, { x: margin + 8, y: infoY, size: 8, font })
+    infoY -= 12
+    page.drawText(`GSTN: ${firmData.gst_number || '27AAAFY0749C2ZB'}   Email: ${firmData.email || 'info@' + firm.toLowerCase().replace(/\s/g, '') + '.com'}`, { x: margin + 8, y: infoY, size: 8, font })
+    infoY -= 12
+    
     // Invoice type on right
-    const invoiceLabel = memoType === 'order' ? 'ORDER INVOICE' : (memoType === 'sale' ? 'CASH INVOICE' : 'CREDIT INVOICE')
-    page.drawText('INVOICE', { x: width - 180, y: height - 45, size: 16, font: fontBold, color: rgb(1, 1, 1) })
-    page.drawText(invoiceLabel, { x: width - 180, y: height - 65, size: 10, font, color: gold })
+    const invoiceType = memoType === 'order' ? 'ORDER INVOICE' : 'CASH INVOICE'
+    page.drawText('INVOICE', { x: width - 140, y: y - 20, size: 14, font: fontBold })
+    page.drawText(invoiceType, { x: width - 140, y: y - 35, size: 9, font })
 
-    y = height - 110
+    y -= headerHeight + 10
 
-    // === COMPANY INFO ===
-    y -= 5
-    if (firmData.address) { 
-      page.drawText(firmData.address, { x: 40, y, size: 8, font, color: gray })
-      y -= 12
-    }
-    const infoLine = [
-      firmData.gst_number ? `GSTN: ${firmData.gst_number}` : '',
-      firmData.phone_number ? `Tel: ${firmData.phone_number}` : '',
-    ].filter(Boolean).join('    ')
-    if (infoLine) {
-      page.drawText(infoLine, { x: 40, y, size: 8, font, color: gray })
-      y -= 12
-    }
-    page.drawText(`Email: ${firmData.email || 'info@' + firm.toLowerCase().replace(/\s/g, '') + '.com'}`, { x: 40, y, size: 8, font, color: gray })
-    y -= 20
-
-    // === CUSTOMER & INVOICE INFO BOX ===
-    page.drawRectangle({ x: 40, y: y - 55, width: width - 80, height: 55, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 0.5 })
+    // === CUSTOMER & INVOICE DETAILS BOX ===
+    const detailsHeight = 50
+    drawBox(page, margin, y - detailsHeight, contentWidth, detailsHeight)
     
-    // Customer section
-    page.drawText('Customer:', { x: 50, y: y - 15, size: 9, font: fontBold, color: navy })
-    page.drawText(customer.name || 'Walk-in Customer', { x: 50, y: y - 28, size: 10, font, color: rgb(0, 0, 0) })
-    if (customer.phone) {
-      page.drawText(`Mob: ${customer.phone}`, { x: 50, y: y - 42, size: 8, font, color: gray })
-    }
-
-    // Invoice details
-    page.drawText('Invoice No:', { x: width - 250, y: y - 15, size: 9, font: fontBold, color: navy })
-    page.drawText((memo?.id || 'DRAFT').toString().slice(0, 12).toUpperCase(), { x: width - 250, y: y - 28, size: 10, font, color: rgb(0, 0, 0) })
+    // Vertical dividers
+    page.drawLine({ start: { x: contentWidth / 2, y: y - detailsHeight }, end: { x: contentWidth / 2, y }, thickness: 0.75 })
+    page.drawLine({ start: { x: contentWidth * 0.75, y: y - detailsHeight }, end: { x: contentWidth * 0.75, y }, thickness: 0.75 })
     
-    page.drawText('Invoice Date:', { x: width - 140, y: y - 15, size: 9, font: fontBold, color: navy })
-    page.drawText(parseDate(memo?.created_at), { x: width - 140, y: y - 28, size: 10, font, color: rgb(0, 0, 0) })
+    // Customer
+    page.drawText('Customer:', { x: margin + 8, y: y - 15, size: 9, font: fontBold })
+    page.drawText(customer.name || 'Walk-in Customer', { x: margin + 8, y: y - 28, size: 10, font })
+    page.drawText(`Mob: ${customer.phone || '—'}`, { x: margin + 8, y: y - 40, size: 8, font, color: rgb(0.4, 0.4, 0.4) })
+    
+    // Invoice No
+    page.drawText('Invoice No:', { x: contentWidth / 2 + 8, y: y - 15, size: 9, font: fontBold })
+    page.drawText((memo?.id || 'DRAFT').toString().slice(0, 12), { x: contentWidth / 2 + 8, y: y - 28, size: 10, font })
+    
+    // Date
+    page.drawText('Invoice Date:', { x: contentWidth * 0.75 + 8, y: y - 15, size: 9, font: fontBold })
+    page.drawText(parseDate(memo?.created_at), { x: contentWidth * 0.75 + 8, y: y - 28, size: 10, font })
+    
+    // State Code
+    page.drawText('State Code: 15', { x: contentWidth * 0.75 + 8, y: y - 40, size: 8, font, color: rgb(0.4, 0.4, 0.4) })
 
-    y -= 70
+    y -= detailsHeight + 10
 
     // === ITEMS TABLE ===
-    const tableTop = y
-    const colX = { no: 50, desc: 90, hsn: 320, qty: 390, rate: 450, gst: 510, amt: 540 }
+    const rowH = 16
+    const cols = [
+      { label: 'Sr No', x: margin, w: 35 },
+      { label: 'Qty', x: margin + 35, w: 35 },
+      { label: 'Description of Goods', x: margin + 70, w: 180 },
+      { label: 'HSN', x: margin + 250, w: 55 },
+      { label: 'Rate', x: margin + 305, w: 70 },
+      { label: 'GST %', x: margin + 375, w: 50 },
+      { label: 'Total Amount', x: margin + 425, w: contentWidth - 395 },
+    ]
 
     // Table header
-    page.drawRectangle({ x: 40, y: tableTop - 20, width: width - 80, height: 20, color: lightGray })
-    page.drawText('Sr', { x: colX.no, y: tableTop - 14, size: 9, font: fontBold })
-    page.drawText('Description of Goods', { x: colX.desc, y: tableTop - 14, size: 9, font: fontBold })
-    page.drawText('HSN', { x: colX.hsn, y: tableTop - 14, size: 9, font: fontBold })
-    page.drawText('Qty', { x: colX.qty, y: tableTop - 14, size: 9, font: fontBold })
-    page.drawText('Rate', { x: colX.rate, y: tableTop - 14, size: 9, font: fontBold })
-    page.drawText('GST%', { x: colX.gst, y: tableTop - 14, size: 9, font: fontBold })
-    page.drawText('Amount', { x: colX.amt, y: tableTop - 14, size: 9, font: fontBold })
-
-    y = tableTop - 35
+    cols.forEach(col => {
+      drawBox(page, col.x, y - rowH, col.w, rowH, { fillColor: rgb(0.92, 0.92, 0.92) })
+      page.drawText(col.label, { x: col.x + 4, y: y - 11, size: 8, font: fontBold })
+    })
+    
+    y -= rowH
 
     // Table rows
     items.forEach((item, idx) => {
-      const amount = item.unit_price * item.quantity
-      const rowH = 18
+      cols.forEach(col => drawBox(page, col.x, y - rowH, col.w, rowH))
       
-      // Alternating row background
-      if (idx % 2 === 0) {
-        page.drawRectangle({ x: 40, y: y - rowH + 5, width: width - 80, height: rowH, color: rgb(0.98, 0.98, 0.98) })
-      }
-
-      page.drawText(String(idx + 1), { x: colX.no + 5, y, size: 9, font })
-      page.drawText((item.name || '—').slice(0, 30), { x: colX.desc, y, size: 9, font })
-      if (item.size) {
-        page.drawText(`Size: ${item.size}`, { x: colX.desc, y: y - 10, size: 7, font, color: gray })
-      }
-      page.drawText(item.hsn_code || '6101', { x: colX.hsn, y, size: 9, font })
-      page.drawText(String(item.quantity), { x: colX.qty, y, size: 9, font })
-      page.drawText(inr(item.unit_price), { x: colX.rate, y, size: 9, font })
-      page.drawText('5.00%', { x: colX.gst, y, size: 9, font })
-      page.drawText(inr(amount), { x: colX.amt, y, size: 9, font })
-
-      y -= item.size ? rowH + 5 : rowH
+      page.drawText(String(idx + 1), { x: cols[0].x + 4, y: y - 11, size: 9, font })
+      page.drawText(String(item.quantity), { x: cols[1].x + 4, y: y - 11, size: 9, font })
+      
+      const desc = (item.name || '—') + (item.size ? ` (Size: ${item.size})` : '')
+      page.drawText(desc.slice(0, 35), { x: cols[2].x + 4, y: y - 11, size: 9, font })
+      
+      page.drawText(item.hsn_code || '6101', { x: cols[3].x + 4, y: y - 11, size: 9, font })
+      page.drawText(inr(item.unit_price), { x: cols[4].x + 4, y: y - 11, size: 9, font })
+      page.drawText('5.00%', { x: cols[5].x + 4, y: y - 11, size: 9, font })
+      page.drawText(inr(item.unit_price * item.quantity), { x: cols[6].x + contentWidth - 395 - page.widthOfTextAtSize(inr(item.unit_price * item.quantity), 9) - 4, y: y - 11, size: 9, font })
+      
+      y -= rowH
     })
 
-    // Table border
-    page.drawRectangle({ x: 40, y: y, width: width - 80, height: tableTop - y - 20, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 0.5 })
+    // Add empty rows if needed
+    const minRows = 8
+    for (let i = items.length; i < minRows; i++) {
+      cols.forEach(col => drawBox(page, col.x, y - rowH, col.w, rowH))
+      y -= rowH
+    }
 
-    y -= 20
+    y -= 10
 
-    // === GST BREAKDOWN TABLE ===
+    // === GST SUMMARY TABLE ===
     if (gstAmt > 0) {
-      y -= 10
-      const gstTableY = y
-      
+      const gstCols = [
+        { label: 'GST', x: margin, w: 60 },
+        { label: 'Taxable', x: margin + 60, w: 90 },
+        { label: 'SGST', x: margin + 150, w: 75 },
+        { label: 'CGST', x: margin + 225, w: 75 },
+      ]
+
       // Header
-      page.drawRectangle({ x: 40, y: gstTableY - 18, width: 200, height: 18, color: lightGray })
-      page.drawText('GST', { x: 50, y: gstTableY - 12, size: 9, font: fontBold })
-      page.drawText('Taxable', { x: 90, y: gstTableY - 12, size: 9, font: fontBold })
-      page.drawText('SGST', { x: 145, y: gstTableY - 12, size: 9, font: fontBold })
-      page.drawText('CGST', { x: 190, y: gstTableY - 12, size: 9, font: fontBold })
+      gstCols.forEach(col => {
+        drawBox(page, col.x, y - rowH, col.w, rowH, { fillColor: rgb(0.92, 0.92, 0.92) })
+        page.drawText(col.label, { x: col.x + 4, y: y - 11, size: 8, font: fontBold })
+      })
+      y -= rowH
 
       // Data row
-      y = gstTableY - 32
-      page.drawText('GST 5%', { x: 50, y, size: 9, font })
-      page.drawText(inr(subtotal), { x: 90, y, size: 9, font })
-      page.drawText(inr(gstAmt / 2), { x: 145, y, size: 9, font })
-      page.drawText(inr(gstAmt / 2), { x: 190, y, size: 9, font })
+      gstCols.forEach(col => drawBox(page, col.x, y - rowH, col.w, rowH))
+      page.drawText('GST 5%', { x: gstCols[0].x + 4, y: y - 11, size: 9, font })
+      page.drawText(inr(subtotal), { x: gstCols[1].x + 4, y: y - 11, size: 9, font })
+      page.drawText(inr(gstAmt / 2), { x: gstCols[2].x + 4, y: y - 11, size: 9, font })
+      page.drawText(inr(gstAmt / 2), { x: gstCols[3].x + 4, y: y - 11, size: 9, font })
+      y -= rowH
 
-      // Total row
-      y -= 15
-      page.drawRectangle({ x: 40, y: y - 5, width: 200, height: 18, color: lightGray })
-      page.drawText('Total', { x: 50, y, size: 9, font: fontBold })
-      page.drawText(inr(subtotal), { x: 90, y, size: 9, font: fontBold })
-      page.drawText(inr(gstAmt / 2), { x: 145, y, size: 9, font: fontBold })
-      page.drawText(inr(gstAmt / 2), { x: 190, y, size: 9, font: fontBold })
-
-      page.drawText(`TOTAL GST: ${inr(gstAmt)}`, { x: 50, y: y - 20, size: 10, font: fontBold })
-
-      y -= 35
+      // TOTAL GST
+      page.drawText(`TOTAL GST: ${inr(gstAmt)}`, { x: margin, y: y - 15, size: 10, font: fontBold })
+      y -= 25
     }
 
     // === NET AMOUNT BOX ===
-    page.drawRectangle({ x: width - 220, y: y - 35, width: 180, height: 35, borderColor: navy, borderWidth: 1 })
-    page.drawText('Net Amount', { x: width - 210, y: y - 15, size: 10, font })
-    page.drawText(inr(total), { x: width - 210, y: y - 28, size: 14, font: fontBold, color: navy })
+    drawBox(page, width - margin - 180, y - 35, 180, 35, { borderWidth: 1.5 })
+    page.drawText('Net Amount', { x: width - margin - 170, y: y - 15, size: 10, font: fontBold })
+    page.drawText(inr(total), { x: width - margin - 170, y: y - 28, size: 14, font: fontBold })
 
     y -= 50
 
-    // === FOOTER ===
+    // === FOOTER BOXES ===
+    // QR Code box
     if (firmData.qr_code_url) {
+      drawBox(page, margin, 45, 90, 90)
       const qrBytes = await fetchImage(firmData.qr_code_url)
       if (qrBytes) {
         try {
           const isPng = firmData.qr_code_url.toLowerCase().includes('.png')
           const qrImg = isPng ? await doc.embedPng(qrBytes) : await doc.embedJpg(qrBytes)
-          page.drawImage(qrImg, { x: 50, y: 50, width: 70, height: 70 })
+          page.drawImage(qrImg, { x: margin + 5, y: 50, width: 80, height: 80 })
         } catch (e) {
-          console.error('QR embed error:', e)
+          console.error('QR error:', e)
         }
       }
     }
 
-    // Bank details
-    page.drawText('Bank Details:', { x: 140, y: 100, size: 8, font: fontBold })
-    page.drawText('Acc: 050020110000230  |  IFSC: BKID0000500', { x: 140, y: 90, size: 7, font, color: gray })
-    page.drawText('Bank of India - Main Branch Pune', { x: 140, y: 80, size: 7, font, color: gray })
+    // Bank details box
+    drawBox(page, margin + 100, 45, 250, 90)
+    page.drawText('Bank Details:', { x: margin + 110, y: 115, size: 9, font: fontBold })
+    page.drawText('Acc: 050020110000230', { x: margin + 110, y: 100, size: 8, font })
+    page.drawText('IFSC: BKID0000500', { x: margin + 110, y: 88, size: 8, font })
+    page.drawText('Bank of India - Main Branch Pune', { x: margin + 110, y: 76, size: 8, font })
+    page.drawText(firmData.footer_note || 'Thank you for your business!', { x: margin + 110, y: 58, size: 8, font, color: rgb(0.4, 0.4, 0.4) })
 
-    // Signature
-    page.drawText('For ' + (firmData.name || firm).toUpperCase(), { x: width - 180, y: 90, size: 8, font: fontBold })
-    page.drawText('Authorised Signatory', { x: width - 180, y: 65, size: 7, font, color: gray })
+    // Signature box
+    drawBox(page, margin + 360, 45, width - margin - 360 - margin, 90)
+    page.drawText('For ' + (firmData.name || firm).toUpperCase(), { x: margin + 370, y: 110, size: 9, font: fontBold })
+    page.drawText('Authorised Signatory', { x: margin + 370, y: 55, size: 8, font, color: rgb(0.4, 0.4, 0.4) })
 
-    // Footer note
-    page.drawLine({ start: { x: 40, y: 45 }, end: { x: width - 40, y: 45 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) })
-    const footerText = firmData.footer_note || 'Thank you for your business!'
-    page.drawText(footerText, { x: width / 2 - (footerText.length * 2), y: 32, size: 8, font, color: gray })
-    page.drawText('"Original for Recipient / Duplicate for Supplier"', { x: width / 2 - 100, y: 20, size: 7, font, color: rgb(0.6, 0.6, 0.6) })
+    // Footer line
+    page.drawText('"Original for Recipient / Duplicate for Supplier"', { x: width / 2 - 110, y: 28, size: 7, font, color: rgb(0.5, 0.5, 0.5) })
+    page.drawText(`Software By Memo App | Generated: ${new Date().toLocaleDateString('en-IN')}`, { x: width / 2 - 120, y: 18, size: 7, font, color: rgb(0.6, 0.6, 0.6) })
 
     const pdfBytes = await doc.save()
 
