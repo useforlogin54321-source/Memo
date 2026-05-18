@@ -58,28 +58,42 @@ export async function POST(req) {
       memoType = 'sale',
     } = await req.json()
 
-    // =========================================
+    // ==================================================
     // DOCUMENT
-    // =========================================
+    // ==================================================
 
     const doc = await PDFDocument.create()
 
-    // HALF A4 LANDSCAPE STYLE COMPACT
-    const page = doc.addPage([595, 360])
+    // HALF A4 STYLE
+    const page = doc.addPage([595, 380])
 
-    const font = await doc.embedFont(StandardFonts.Helvetica)
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold)
-    const mono = await doc.embedFont(StandardFonts.Courier)
+    const font = await doc.embedFont(
+      StandardFonts.Helvetica
+    )
+
+    const bold = await doc.embedFont(
+      StandardFonts.HelveticaBold
+    )
+
+    const mono = await doc.embedFont(
+      StandardFonts.Courier
+    )
 
     const { width, height } = page.getSize()
 
     const m = 14
 
-    // =========================================
+    // ==================================================
     // HELPERS
-    // =========================================
+    // ==================================================
 
-    const box = (x, y, w, h, bw = 1) => {
+    const box = (
+      x,
+      y,
+      w,
+      h,
+      bw = 1
+    ) => {
       page.drawRectangle({
         x,
         y,
@@ -90,7 +104,13 @@ export async function POST(req) {
       })
     }
 
-    const line = (x1, y1, x2, y2, t = 0.8) => {
+    const line = (
+      x1,
+      y1,
+      x2,
+      y2,
+      t = 0.8
+    ) => {
       page.drawLine({
         start: { x: x1, y: y1 },
         end: { x: x2, y: y2 },
@@ -99,9 +119,9 @@ export async function POST(req) {
       })
     }
 
-    // =========================================
-    // MASTER OUTER BORDER
-    // =========================================
+    // ==================================================
+    // OUTER BORDER
+    // ==================================================
 
     box(
       m,
@@ -111,22 +131,35 @@ export async function POST(req) {
       1.5
     )
 
-    // =========================================
-    // HEADER
-    // =========================================
+    // ==================================================
+    // TOP SECTION
+    // ==================================================
 
-    const headerH = 42
-    const headerY = height - m - headerH
+    const topH = 62
+    const topY = height - m - topH
 
     box(
       m,
-      headerY,
+      topY,
       width - (m * 2),
-      headerH,
+      topH
+    )
+
+    // LOGO DIVIDER
+    const logoSectionW = 110
+
+    line(
+      m + logoSectionW,
+      topY,
+      m + logoSectionW,
+      topY + topH,
       1
     )
 
+    // ==================================================
     // LOGO
+    // ==================================================
+
     if (firmData.logo_url) {
       const logoBytes = await fetchImage(
         firmData.logo_url
@@ -143,14 +176,17 @@ export async function POST(req) {
             ? await doc.embedPng(logoBytes)
             : await doc.embedJpg(logoBytes)
 
-          const logoH = 24
+          const logoH = 38
+
           const logoW =
             (logoImg.width / logoImg.height) *
             logoH
 
           page.drawImage(logoImg, {
-            x: m + 10,
-            y: headerY + 9,
+            x:
+              m +
+              ((logoSectionW - logoW) / 2),
+            y: topY + 12,
             width: logoW,
             height: logoH,
           })
@@ -158,65 +194,31 @@ export async function POST(req) {
       }
     }
 
-    // RIGHT SIDE TITLE
-    const title =
-      memoType === 'order'
-        ? 'ORDER'
-        : 'INVOICE'
+    // ==================================================
+    // CUSTOMER DETAILS
+    // ==================================================
 
-    const titleSize = 18
-
-    const titleW =
-      bold.widthOfTextAtSize(
-        title,
-        titleSize
-      )
-
-    page.drawText(title, {
-      x: width - m - titleW - 12,
-      y: headerY + 12,
-      size: titleSize,
-      font: bold,
-      color: BLACK,
-    })
-
-    // =========================================
-    // CUSTOMER + META
-    // =========================================
-
-    const infoH = 45
-    const infoY = headerY - infoH
-
-    box(
-      m,
-      infoY,
-      width - (m * 2),
-      infoH
-    )
-
-    // CENTER DIVIDER
-    line(
-      width / 2,
-      infoY,
-      width / 2,
-      infoY + infoH,
-      1
-    )
-
-    // LEFT
-    page.drawText('BILL TO', {
-      x: m + 8,
-      y: infoY + 30,
-      size: 7,
-      font: bold,
-      color: BLACK,
-    })
+    const cx = m + logoSectionW + 10
 
     page.drawText(
-      customer.name || 'Walk-in Customer',
+      'CUSTOMER DETAILS',
       {
-        x: m + 8,
-        y: infoY + 16,
+        x: cx,
+        y: topY + 45,
+        size: 7,
+        font: bold,
+        color: BLACK,
+      }
+    )
+
+    page.drawText(
+      (
+        customer.name ||
+        'Walk-in Customer'
+      ).toUpperCase(),
+      {
+        x: cx,
+        y: topY + 30,
         size: 10,
         font: bold,
         color: BLACK,
@@ -225,70 +227,125 @@ export async function POST(req) {
 
     if (customer.phone) {
       page.drawText(customer.phone, {
-        x: m + 8,
-        y: infoY + 5,
-        size: 7,
+        x: cx,
+        y: topY + 17,
+        size: 8,
         font,
         color: BLACK,
       })
     }
 
-    // RIGHT
-    const rx = width / 2 + 10
+    if (customer.address) {
+      page.drawText(
+        customer.address
+          .toUpperCase()
+          .slice(0, 55),
+        {
+          x: cx,
+          y: topY + 5,
+          size: 7,
+          font,
+          color: BLACK,
+        }
+      )
+    }
 
-    page.drawText('INVOICE NO', {
-      x: rx,
-      y: infoY + 30,
-      size: 7,
-      font: bold,
-      color: BLACK,
-    })
+    // ==================================================
+    // META ROW
+    // ==================================================
+
+    const metaH = 24
+    const metaY = topY - metaH
+
+    box(
+      m,
+      metaY,
+      width - (m * 2),
+      metaH
+    )
 
     page.drawText(
-      (memo?.id || 'DRAFT')
+      `INVOICE NO: ${(
+        memo?.id || 'DRAFT'
+      )
         .toString()
         .slice(0, 12)
-        .toUpperCase(),
+        .toUpperCase()}`,
       {
-        x: rx + 75,
-        y: infoY + 30,
+        x: m + 10,
+        y: metaY + 7,
         size: 8,
         font: mono,
         color: BLACK,
       }
     )
 
-    page.drawText('DATE', {
-      x: rx,
-      y: infoY + 14,
-      size: 7,
+    const dateText = `DATE: ${parseDate(
+      memo?.created_at
+    )}`
+
+    const dateW =
+      mono.widthOfTextAtSize(
+        dateText,
+        8
+      )
+
+    page.drawText(dateText, {
+      x: width - m - dateW - 10,
+      y: metaY + 7,
+      size: 8,
+      font: mono,
+      color: BLACK,
+    })
+
+    // ==================================================
+    // DOCUMENT TITLE
+    // ==================================================
+
+    const titleH = 28
+    const titleY = metaY - titleH
+
+    box(
+      m,
+      titleY,
+      width - (m * 2),
+      titleH
+    )
+
+    const invoiceLabel =
+      memoType === 'order'
+        ? 'ORDER'
+        : 'TAX INVOICE'
+
+    const titleSize = 13
+
+    const titleW =
+      bold.widthOfTextAtSize(
+        invoiceLabel,
+        titleSize
+      )
+
+    page.drawText(invoiceLabel, {
+      x: (width - titleW) / 2,
+      y: titleY + 8,
+      size: titleSize,
       font: bold,
       color: BLACK,
     })
 
-    page.drawText(
-      parseDate(memo?.created_at),
-      {
-        x: rx + 75,
-        y: infoY + 14,
-        size: 8,
-        font,
-        color: BLACK,
-      }
-    )
-
-    // =========================================
+    // ==================================================
     // TABLE
-    // =========================================
+    // ==================================================
 
-    const visibleRows = Math.max(items.length, 3)
+    const visibleRows = 6
 
-    const rowH = 20
+    const rowH = 18
+
     const tableH =
       24 + (visibleRows * rowH)
 
     const tableY =
-      infoY - tableH
+      titleY - tableH
 
     box(
       m,
@@ -306,8 +363,17 @@ export async function POST(req) {
       color: BLACK,
     })
 
+    // HEADER BOTTOM LINE
+    line(
+      m,
+      tableY + tableH - 24,
+      width - m,
+      tableY + tableH - 24,
+      1
+    )
+
     // COLUMNS
-    const c1 = m + 40
+    const c1 = m + 42
     const c2 = m + 330
     const c3 = m + 405
     const c4 = m + 490
@@ -364,20 +430,12 @@ export async function POST(req) {
       color: WHITE,
     })
 
-    // ROWS
+    // ITEMS
     let currentY =
       tableY + tableH - 24
 
     for (let i = 0; i < visibleRows; i++) {
       currentY -= rowH
-
-      line(
-        m,
-        currentY,
-        width - m,
-        currentY,
-        0.6
-      )
 
       const item = items[i]
 
@@ -387,7 +445,7 @@ export async function POST(req) {
         String(item.quantity || 0),
         {
           x: m + 10,
-          y: currentY + 6,
+          y: currentY + 5,
           size: 8,
           font,
           color: BLACK,
@@ -406,7 +464,7 @@ export async function POST(req) {
 
       page.drawText(desc, {
         x: c1 + 8,
-        y: currentY + 6,
+        y: currentY + 5,
         size: 8,
         font,
         color: BLACK,
@@ -416,7 +474,7 @@ export async function POST(req) {
         item.hsn_code || '6101',
         {
           x: c2 + 8,
-          y: currentY + 6,
+          y: currentY + 5,
           size: 8,
           font: mono,
           color: BLACK,
@@ -429,7 +487,7 @@ export async function POST(req) {
 
       page.drawText(rate, {
         x: c3 + 8,
-        y: currentY + 6,
+        y: currentY + 5,
         size: 8,
         font: mono,
         color: BLACK,
@@ -444,20 +502,25 @@ export async function POST(req) {
         mono.widthOfTextAtSize(amt, 8)
 
       page.drawText(amt, {
-        x: width - m - amtW - 8,
-        y: currentY + 6,
+        x:
+          width -
+          m -
+          amtW -
+          8,
+        y: currentY + 5,
         size: 8,
         font: mono,
         color: BLACK,
       })
     }
 
-    // =========================================
-    // FOOTER + TOTALS MERGED
-    // =========================================
+    // ==================================================
+    // FOOTER
+    // ==================================================
 
-    const footerH = 52
-    const footerY = tableY - footerH
+    const footerH = 42
+    const footerY =
+      tableY - footerH + 1
 
     box(
       m,
@@ -466,67 +529,33 @@ export async function POST(req) {
       footerH
     )
 
-    // DIVIDERS
-    const leftDiv = 145
-    const rightDiv = width - 180
+    const totalSectionW = 180
 
     line(
-      leftDiv,
+      width - totalSectionW,
       footerY,
-      leftDiv,
+      width - totalSectionW,
       footerY + footerH,
       1
     )
 
-    line(
-      rightDiv,
-      footerY,
-      rightDiv,
-      footerY + footerH,
-      1
-    )
-
-    // QR
-    if (firmData.qr_code_url) {
-      const qrBytes = await fetchImage(
-        firmData.qr_code_url
-      )
-
-      if (qrBytes) {
-        try {
-          const isPng =
-            firmData.qr_code_url
-              .toLowerCase()
-              .includes('.png')
-
-          const qrImg = isPng
-            ? await doc.embedPng(qrBytes)
-            : await doc.embedJpg(qrBytes)
-
-          page.drawImage(qrImg, {
-            x: m + 8,
-            y: footerY + 8,
-            width: 36,
-            height: 36,
-          })
-        } catch {}
+    // BANK DETAILS
+    page.drawText(
+      'BANK DETAILS',
+      {
+        x: m + 10,
+        y: footerY + 25,
+        size: 7,
+        font: bold,
+        color: BLACK,
       }
-    }
-
-    // BANK
-    page.drawText('BANK DETAILS', {
-      x: leftDiv + 10,
-      y: footerY + 34,
-      size: 7,
-      font: bold,
-      color: BLACK,
-    })
+    )
 
     page.drawText(
       'A/C: 050020110000230',
       {
-        x: leftDiv + 10,
-        y: footerY + 22,
+        x: m + 10,
+        y: footerY + 13,
         size: 7,
         font: mono,
         color: BLACK,
@@ -536,8 +565,8 @@ export async function POST(req) {
     page.drawText(
       'IFSC: BKID0000500',
       {
-        x: leftDiv + 10,
-        y: footerY + 10,
+        x: m + 180,
+        y: footerY + 13,
         size: 7,
         font: mono,
         color: BLACK,
@@ -545,48 +574,60 @@ export async function POST(req) {
     )
 
     // TOTALS
-    let tx = rightDiv + 12
-    let ty = footerY + 34
+    const tx =
+      width - totalSectionW + 12
 
     page.drawText('SUBTOTAL', {
       x: tx,
-      y: ty,
+      y: footerY + 25,
       size: 7,
       font,
       color: BLACK,
     })
 
-    const sub = inr(subtotal)
+    const subText = inr(subtotal)
 
     const subW =
-      mono.widthOfTextAtSize(sub, 7)
+      mono.widthOfTextAtSize(
+        subText,
+        7
+      )
 
-    page.drawText(sub, {
-      x: width - m - subW - 8,
-      y: ty,
+    page.drawText(subText, {
+      x:
+        width -
+        m -
+        subW -
+        8,
+      y: footerY + 25,
       size: 7,
       font: mono,
       color: BLACK,
     })
 
-    ty -= 12
-
     page.drawText('GST', {
       x: tx,
-      y: ty,
+      y: footerY + 13,
       size: 7,
       font,
       color: BLACK,
     })
 
-    const gst = inr(gstAmt)
+    const gstText = inr(gstAmt)
 
     const gstW =
-      mono.widthOfTextAtSize(gst, 7)
+      mono.widthOfTextAtSize(
+        gstText,
+        7
+      )
 
-    page.drawText(gst, {
-      x: width - m - gstW - 8,
-      y: ty,
+    page.drawText(gstText, {
+      x:
+        width -
+        m -
+        gstW -
+        8,
+      y: footerY + 13,
       size: 7,
       font: mono,
       color: BLACK,
@@ -594,12 +635,20 @@ export async function POST(req) {
 
     // TOTAL LINE
     line(
-      rightDiv,
-      footerY + 16,
+      width - totalSectionW,
+      footerY + 10,
       width - m,
-      footerY + 16,
+      footerY + 10,
       1
     )
+
+    page.drawText('TOTAL', {
+      x: tx,
+      y: footerY + 1,
+      size: 10,
+      font: bold,
+      color: BLACK,
+    })
 
     const totalText = inr(total)
 
@@ -609,25 +658,21 @@ export async function POST(req) {
         10
       )
 
-    page.drawText('TOTAL', {
-      x: tx,
-      y: footerY + 5,
-      size: 10,
-      font: bold,
-      color: BLACK,
-    })
-
     page.drawText(totalText, {
-      x: width - m - totalW - 8,
-      y: footerY + 5,
+      x:
+        width -
+        m -
+        totalW -
+        8,
+      y: footerY + 1,
       size: 10,
       font: mono,
       color: BLACK,
     })
 
-    // =========================================
+    // ==================================================
     // SAVE
-    // =========================================
+    // ==================================================
 
     const pdfBytes = await doc.save()
 
@@ -652,4 +697,4 @@ export async function POST(req) {
       }
     )
   }
-      }
+        }
