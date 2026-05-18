@@ -1,28 +1,71 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import {
+  PDFDocument,
+  rgb,
+  StandardFonts,
+} from 'pdf-lib'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
+// ======================================================
+// COLORS
+// ======================================================
+
 const BLACK = rgb(0, 0, 0)
-const WHITE = rgb(1, 1, 1)
+const DARK = rgb(0.12, 0.12, 0.12)
+const LIGHT = rgb(0.96, 0.96, 0.96)
+const MID = rgb(0.7, 0.7, 0.7)
+
+// ======================================================
+// TYPOGRAPHY
+// ======================================================
+
+const TYPE = {
+  xs: 7,
+  sm: 8,
+  md: 9,
+  lg: 12,
+  xl: 18,
+}
+
+// ======================================================
+// SPACING
+// ======================================================
+
+const SPACE = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 18,
+  xl: 26,
+}
+
+// ======================================================
+// HELPERS
+// ======================================================
 
 const inr = (n) =>
-  `Rs. ${Number(n || 0).toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
+  `Rs. ${Number(n || 0).toLocaleString(
+    'en-IN',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }
+  )}`
 
 function parseDate(iso) {
   try {
-    const d = new Date(iso)
-
-    return d.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    }).toUpperCase()
+    return new Date(iso)
+      .toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+      .toUpperCase()
   } catch {
-    return new Date().toLocaleDateString('en-IN')
+    return new Date()
+      .toLocaleDateString('en-IN')
+      .toUpperCase()
   }
 }
 
@@ -38,11 +81,135 @@ async function fetchImage(url) {
 
     if (!res.ok) return null
 
-    return await res.arrayBuffer()
+    const contentType =
+      res.headers.get('content-type') || ''
+
+    const bytes = await res.arrayBuffer()
+
+    return {
+      bytes,
+      contentType,
+    }
   } catch {
     return null
   }
 }
+
+function drawLine(
+  page,
+  x1,
+  y1,
+  x2,
+  y2,
+  thickness = 1,
+  color = BLACK
+) {
+  page.drawLine({
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    thickness,
+    color,
+  })
+}
+
+function drawText(
+  page,
+  text,
+  x,
+  y,
+  {
+    size = TYPE.sm,
+    font,
+    color = BLACK,
+  }
+) {
+  page.drawText(String(text || ''), {
+    x,
+    y,
+    size,
+    font,
+    color,
+  })
+}
+
+function drawRightText(
+  page,
+  text,
+  rightX,
+  y,
+  {
+    size = TYPE.sm,
+    font,
+    color = BLACK,
+  }
+) {
+  const width =
+    font.widthOfTextAtSize(
+      String(text),
+      size
+    )
+
+  page.drawText(String(text), {
+    x: rightX - width,
+    y,
+    size,
+    font,
+    color,
+  })
+}
+
+function wrapText(
+  text,
+  font,
+  size,
+  maxWidth
+) {
+  const words = String(text).split(' ')
+  const lines = []
+
+  let current = ''
+
+  for (const word of words) {
+    const test = current
+      ? `${current} ${word}`
+      : word
+
+    const width =
+      font.widthOfTextAtSize(
+        test,
+        size
+      )
+
+    if (width <= maxWidth) {
+      current = test
+    } else {
+      if (current) lines.push(current)
+      current = word
+    }
+  }
+
+  if (current) lines.push(current)
+
+  return lines
+}
+
+function chunk(array, size) {
+  const out = []
+
+  for (
+    let i = 0;
+    i < array.length;
+    i += size
+  ) {
+    out.push(array.slice(i, i + size))
+  }
+
+  return out
+}
+
+// ======================================================
+// MAIN
+// ======================================================
 
 export async function POST(req) {
   try {
@@ -56,624 +223,644 @@ export async function POST(req) {
       total = 0,
     } = await req.json()
 
-    // =================================================
-    // PDF DOCUMENT
-    // =================================================
+    const doc =
+      await PDFDocument.create()
 
-    const doc = await PDFDocument.create()
+    // ==================================================
+    // FONTS
+    // ==================================================
 
-    // HALF A4 LANDSCAPE STYLE
-    const page = doc.addPage([595, 355])
+    const regular =
+      await doc.embedFont(
+        StandardFonts.Helvetica
+      )
 
-    const font = await doc.embedFont(
-      StandardFonts.Helvetica
+    const bold =
+      await doc.embedFont(
+        StandardFonts.HelveticaBold
+      )
+
+    const mono =
+      await doc.embedFont(
+        StandardFonts.Courier
+      )
+
+    // ==================================================
+    // PAGE CONFIG
+    // ==================================================
+
+    const PAGE_W = 595
+    const PAGE_H = 420
+
+    const M = 28
+
+    const TABLE_ROW_H = 28
+
+    const TABLE_TOP = 220
+
+    const MAX_ROWS = 6
+
+    const pages = chunk(
+      items,
+      MAX_ROWS
     )
 
-    const bold = await doc.embedFont(
-      StandardFonts.HelveticaBold
-    )
+    if (pages.length === 0) {
+      pages.push([])
+    }
 
-    const mono = await doc.embedFont(
-      StandardFonts.Courier
-    )
+    // ==================================================
+    // RENDER EACH PAGE
+    // ==================================================
 
-    const { width, height } = page.getSize()
+    for (const pageItems of pages) {
+      const page =
+        doc.addPage([
+          PAGE_W,
+          PAGE_H,
+        ])
 
-    const m = 10
+      // ================================================
+      // OUTER FRAME
+      // ================================================
 
-    // =================================================
-    // HELPERS
-    // =================================================
-
-    const box = (
-      x,
-      y,
-      w,
-      h,
-      bw = 1
-    ) => {
       page.drawRectangle({
-        x,
-        y,
-        width: w,
-        height: h,
+        x: M,
+        y: M,
+        width: PAGE_W - M * 2,
+        height: PAGE_H - M * 2,
+        borderWidth: 1.2,
         borderColor: BLACK,
-        borderWidth: bw,
       })
-    }
 
-    const line = (
-      x1,
-      y1,
-      x2,
-      y2,
-      t = 0.8
-    ) => {
-      page.drawLine({
-        start: { x: x1, y: y1 },
-        end: { x: x2, y: y2 },
-        thickness: t,
+      // ================================================
+      // LEFT ACCENT BAR
+      // ================================================
+
+      page.drawRectangle({
+        x: M,
+        y: M,
+        width: 5,
+        height: PAGE_H - M * 2,
         color: BLACK,
       })
-    }
 
-    // =================================================
-    // MASTER BORDER
-    // =================================================
+      // ================================================
+      // HEADER
+      // ================================================
 
-    box(
-      m,
-      m,
-      width - (m * 2),
-      height - (m * 2),
-      1.5
-    )
+      const headerY =
+        PAGE_H - M - 40
 
-    // =================================================
-    // TOP SECTION
-    // =================================================
-
-    const topH = 42
-
-    const topY = height - m - topH
-
-    box(
-      m,
-      topY,
-      width - (m * 2),
-      topH,
-      1
-    )
-
-    // COLUMN DIVIDERS
-    const logoW = 90
-    const customerW = 260
-    const invoiceW = 110
-
-    const x1 = m + logoW
-    const x2 = x1 + customerW
-    const x3 = x2 + invoiceW
-
-    line(
-      x1,
-      topY,
-      x1,
-      topY + topH,
-      1
-    )
-
-    line(
-      x2,
-      topY,
-      x2,
-      topY + topH,
-      1
-    )
-
-    line(
-      x3,
-      topY,
-      x3,
-      topY + topH,
-      1
-    )
-
-    // =================================================
-    // LOGO
-    // =================================================
-
-    if (firmData.logo_url) {
-      const logoBytes = await fetchImage(
-        firmData.logo_url
-      )
-
-      if (logoBytes) {
-        try {
-          const isPng =
+      // LOGO
+      if (firmData.logo_url) {
+        const img =
+          await fetchImage(
             firmData.logo_url
-              .toLowerCase()
-              .includes('.png')
+          )
 
-          const logoImg = isPng
-            ? await doc.embedPng(logoBytes)
-            : await doc.embedJpg(logoBytes)
+        if (img) {
+          try {
+            const embedded =
+              img.contentType.includes(
+                'png'
+              )
+                ? await doc.embedPng(
+                    img.bytes
+                  )
+                : await doc.embedJpg(
+                    img.bytes
+                  )
 
-          const logoH = 28
+            const h = 38
 
-          const logoW2 =
-            (logoImg.width / logoImg.height) *
-            logoH
+            const w =
+              (embedded.width /
+                embedded.height) *
+              h
 
-          page.drawImage(logoImg, {
-            x:
-              m +
-              ((logoW - logoW2) / 2),
-            y: topY + 7,
-            width: logoW2,
-            height: logoH,
-          })
-        } catch {}
+            page.drawImage(embedded, {
+              x: M + 16,
+              y: headerY - 2,
+              width: w,
+              height: h,
+            })
+          } catch {}
+        }
       }
-    }
 
-    // =================================================
-    // CUSTOMER DETAILS
-    // =================================================
-
-    const cx = x1 + 8
-
-    page.drawText(
-      'CUSTOMER DETAILS',
-      {
-        x: cx,
-        y: topY + 28,
-        size: 7,
-        font: bold,
-        color: BLACK,
-      }
-    )
-
-    page.drawText(
-      (
-        customer.name ||
-        'Walk-in Customer'
-      ).toUpperCase(),
-      {
-        x: cx,
-        y: topY + 15,
-        size: 9,
-        font: bold,
-        color: BLACK,
-      }
-    )
-
-    if (customer.phone) {
-      page.drawText(customer.phone, {
-        x: cx,
-        y: topY + 4,
-        size: 7,
-        font,
-        color: BLACK,
-      })
-    }
-
-    // =================================================
-    // INVOICE NUMBER
-    // =================================================
-
-    page.drawText('INVOICE NO', {
-      x: x2 + 8,
-      y: topY + 26,
-      size: 7,
-      font: bold,
-      color: BLACK,
-    })
-
-    page.drawText(
-      (memo?.id || 'DRAFT')
-        .toString()
-        .slice(0, 12)
-        .toUpperCase(),
-      {
-        x: x2 + 8,
-        y: topY + 12,
-        size: 8,
-        font: mono,
-        color: BLACK,
-      }
-    )
-
-    // =================================================
-    // DATE
-    // =================================================
-
-    page.drawText('DATE', {
-      x: x3 + 8,
-      y: topY + 26,
-      size: 7,
-      font: bold,
-      color: BLACK,
-    })
-
-    page.drawText(
-      parseDate(memo?.created_at),
-      {
-        x: x3 + 8,
-        y: topY + 12,
-        size: 8,
-        font: mono,
-        color: BLACK,
-      }
-    )
-
-    // =================================================
-    // TABLE
-    // =================================================
-
-    const visibleRows = 8
-
-    const rowH = 18
-
-    const tableH =
-      42 + (visibleRows * rowH)
-
-    const tableY =
-      topY - tableH
-
-    box(
-      m,
-      tableY,
-      width - (m * 2),
-      tableH,
-      1
-    )
-
-    // =================================================
-    // TAX INVOICE TITLE
-    // =================================================
-
-    page.drawText('TAX INVOICE', {
-      x: width / 2 - 42,
-      y: tableY + tableH - 14,
-      size: 11,
-      font: bold,
-      color: BLACK,
-    })
-
-    // =================================================
-    // BLACK TABLE HEADER
-    // =================================================
-
-    const headerY =
-      tableY + tableH - 36
-
-    page.drawRectangle({
-      x: m,
-      y: headerY,
-      width: width - (m * 2),
-      height: 22,
-      color: BLACK,
-    })
-
-    // =================================================
-    // COLUMNS
-    // =================================================
-
-    const c1 = m + 42
-    const c2 = m + 330
-    const c3 = m + 405
-    const c4 = m + 490
-
-    // VERTICAL LINES
-    ;[c1, c2, c3, c4].forEach((x) => {
-      line(
-        x,
-        tableY,
-        x,
-        tableY + tableH - 14,
-        0.8
-      )
-    })
-
-    // =================================================
-    // HEADER TEXT
-    // =================================================
-
-    page.drawText('QTY', {
-      x: m + 10,
-      y: headerY + 7,
-      size: 8,
-      font: bold,
-      color: WHITE,
-    })
-
-    page.drawText('DESCRIPTION', {
-      x: c1 + 8,
-      y: headerY + 7,
-      size: 8,
-      font: bold,
-      color: WHITE,
-    })
-
-    page.drawText('HSN', {
-      x: c2 + 8,
-      y: headerY + 7,
-      size: 8,
-      font: bold,
-      color: WHITE,
-    })
-
-    page.drawText('RATE', {
-      x: c3 + 8,
-      y: headerY + 7,
-      size: 8,
-      font: bold,
-      color: WHITE,
-    })
-
-    page.drawText('AMOUNT', {
-      x: c4 + 8,
-      y: headerY + 7,
-      size: 8,
-      font: bold,
-      color: WHITE,
-    })
-
-    // =================================================
-    // ITEMS
-    // =================================================
-
-    let currentY = headerY
-
-    for (let i = 0; i < visibleRows; i++) {
-      currentY -= rowH
-
-      const item = items[i]
-
-      if (!item) continue
-
-      page.drawText(
-        String(item.quantity || 0),
+      // COMPANY
+      drawText(
+        page,
+        (
+          firmData.name ||
+          'BOMBAY HOSIERY'
+        ).toUpperCase(),
+        M + 80,
+        headerY + 12,
         {
-          x: m + 10,
-          y: currentY + 5,
-          size: 8,
-          font,
-          color: BLACK,
+          size: TYPE.lg,
+          font: bold,
         }
       )
 
-      let desc = (
-        item.name || '-'
-      ).toUpperCase()
-
-      if (item.size) {
-        desc += ` (${item.size})`
-      }
-
-      desc = desc.slice(0, 40)
-
-      page.drawText(desc, {
-        x: c1 + 8,
-        y: currentY + 5,
-        size: 8,
-        font,
-        color: BLACK,
-      })
-
-      page.drawText(
-        item.hsn_code || '6101',
+      drawText(
+        page,
+        firmData.address ||
+          'Premium Uniform Supplier',
+        M + 80,
+        headerY - 2,
         {
-          x: c2 + 8,
-          y: currentY + 5,
-          size: 8,
+          size: TYPE.xs,
+          font: regular,
+          color: DARK,
+        }
+      )
+
+      drawText(
+        page,
+        `GSTIN: ${
+          firmData.gstin ||
+          'XXXXXXXXXXXX'
+        }`,
+        M + 80,
+        headerY - 14,
+        {
+          size: TYPE.xs,
           font: mono,
-          color: BLACK,
+          color: DARK,
         }
       )
 
-      const rate = inr(
-        item.unit_price || 0
+      // ================================================
+      // INVOICE META
+      // ================================================
+
+      drawRightText(
+        page,
+        'TAX INVOICE',
+        PAGE_W - M - 20,
+        headerY + 12,
+        {
+          size: TYPE.xl,
+          font: bold,
+        }
       )
 
-      page.drawText(rate, {
-        x: c3 + 8,
-        y: currentY + 5,
-        size: 8,
-        font: mono,
-        color: BLACK,
-      })
-
-      const amt = inr(
-        (item.quantity || 0) *
-          (item.unit_price || 0)
+      drawRightText(
+        page,
+        `# ${
+          memo?.id || 'DRAFT'
+        }`,
+        PAGE_W - M - 20,
+        headerY - 2,
+        {
+          size: TYPE.sm,
+          font: mono,
+        }
       )
 
-      const amtW =
-        mono.widthOfTextAtSize(amt, 8)
+      drawRightText(
+        page,
+        parseDate(
+          memo?.created_at
+        ),
+        PAGE_W - M - 20,
+        headerY - 16,
+        {
+          size: TYPE.sm,
+          font: mono,
+        }
+      )
 
-      page.drawText(amt, {
-        x:
-          width -
-          m -
-          amtW -
-          8,
-        y: currentY + 5,
-        size: 8,
-        font: mono,
-        color: BLACK,
+      // ================================================
+      // SEPARATOR
+      // ================================================
+
+      drawLine(
+        page,
+        M + 16,
+        PAGE_H - 105,
+        PAGE_W - M - 16,
+        PAGE_H - 105,
+        0.8,
+        MID
+      )
+
+      // ================================================
+      // CUSTOMER
+      // ================================================
+
+      drawText(
+        page,
+        'BILL TO',
+        M + 16,
+        PAGE_H - 128,
+        {
+          size: TYPE.xs,
+          font: bold,
+          color: DARK,
+        }
+      )
+
+      drawText(
+        page,
+        (
+          customer.name ||
+          'Walk-in Customer'
+        ).toUpperCase(),
+        M + 16,
+        PAGE_H - 146,
+        {
+          size: TYPE.md,
+          font: bold,
+        }
+      )
+
+      if (customer.phone) {
+        drawText(
+          page,
+          customer.phone,
+          M + 16,
+          PAGE_H - 160,
+          {
+            size: TYPE.sm,
+            font: regular,
+            color: DARK,
+          }
+        )
+      }
+
+      // ================================================
+      // TABLE HEADER
+      // ================================================
+
+      const tableY = TABLE_TOP
+
+      drawLine(
+        page,
+        M + 16,
+        tableY + 22,
+        PAGE_W - M - 16,
+        tableY + 22,
+        1.2,
+        BLACK
+      )
+
+      drawText(
+        page,
+        'QTY',
+        M + 16,
+        tableY + 8,
+        {
+          size: TYPE.sm,
+          font: bold,
+        }
+      )
+
+      drawText(
+        page,
+        'DESCRIPTION',
+        M + 70,
+        tableY + 8,
+        {
+          size: TYPE.sm,
+          font: bold,
+        }
+      )
+
+      drawText(
+        page,
+        'HSN',
+        PAGE_W - 220,
+        tableY + 8,
+        {
+          size: TYPE.sm,
+          font: bold,
+        }
+      )
+
+      drawText(
+        page,
+        'RATE',
+        PAGE_W - 150,
+        tableY + 8,
+        {
+          size: TYPE.sm,
+          font: bold,
+        }
+      )
+
+      drawRightText(
+        page,
+        'AMOUNT',
+        PAGE_W - M - 16,
+        tableY + 8,
+        {
+          size: TYPE.sm,
+          font: bold,
+        }
+      )
+
+      // ================================================
+      // ROWS
+      // ================================================
+
+      let y = tableY - 8
+
+      pageItems.forEach(
+        (item, index) => {
+          y -= TABLE_ROW_H
+
+          // zebra stripe
+          if (index % 2 === 0) {
+            page.drawRectangle({
+              x: M + 10,
+              y: y - 4,
+              width:
+                PAGE_W -
+                (M + 10) * 2,
+              height:
+                TABLE_ROW_H - 2,
+              color: LIGHT,
+            })
+          }
+
+          drawText(
+            page,
+            item.quantity || 0,
+            M + 16,
+            y + 6,
+            {
+              font: regular,
+            }
+          )
+
+          const desc =
+            (
+              item.name || '-'
+            ).toUpperCase()
+
+          const descLines =
+            wrapText(
+              desc,
+              regular,
+              TYPE.sm,
+              240
+            )
+
+          drawText(
+            page,
+            descLines[0] || '',
+            M + 70,
+            y + 6,
+            {
+              font: regular,
+            }
+          )
+
+          if (descLines[1]) {
+            drawText(
+              page,
+              descLines[1],
+              M + 70,
+              y - 4,
+              {
+                size: TYPE.xs,
+                font: regular,
+                color: DARK,
+              }
+            )
+          }
+
+          drawText(
+            page,
+            item.hsn_code ||
+              '6101',
+            PAGE_W - 220,
+            y + 6,
+            {
+              font: mono,
+            }
+          )
+
+          drawText(
+            page,
+            inr(
+              item.unit_price ||
+                0
+            ),
+            PAGE_W - 150,
+            y + 6,
+            {
+              font: mono,
+            }
+          )
+
+          drawRightText(
+            page,
+            inr(
+              (item.quantity ||
+                0) *
+                (item.unit_price ||
+                  0)
+            ),
+            PAGE_W - M - 16,
+            y + 6,
+            {
+              font: mono,
+            }
+          )
+
+          drawLine(
+            page,
+            M + 16,
+            y - 8,
+            PAGE_W - M - 16,
+            y - 8,
+            0.35,
+            MID
+          )
+        }
+      )
+
+      // ================================================
+      // TOTAL SECTION
+      // ================================================
+
+      const totalsY = 82
+
+      drawLine(
+        page,
+        PAGE_W - 220,
+        totalsY + 58,
+        PAGE_W - M - 16,
+        totalsY + 58,
+        1,
+        BLACK
+      )
+
+      drawText(
+        page,
+        'SUBTOTAL',
+        PAGE_W - 220,
+        totalsY + 42,
+        {
+          font: regular,
+          size: TYPE.sm,
+        }
+      )
+
+      drawRightText(
+        page,
+        inr(subtotal),
+        PAGE_W - M - 16,
+        totalsY + 42,
+        {
+          font: mono,
+          size: TYPE.sm,
+        }
+      )
+
+      drawText(
+        page,
+        'GST',
+        PAGE_W - 220,
+        totalsY + 24,
+        {
+          font: regular,
+          size: TYPE.sm,
+        }
+      )
+
+      drawRightText(
+        page,
+        inr(gstAmt),
+        PAGE_W - M - 16,
+        totalsY + 24,
+        {
+          font: mono,
+          size: TYPE.sm,
+        }
+      )
+
+      // GRAND TOTAL BOX
+
+      page.drawRectangle({
+        x: PAGE_W - 240,
+        y: totalsY - 12,
+        width: 200,
+        height: 42,
+        borderWidth: 1.4,
+        borderColor: BLACK,
       })
+
+      drawText(
+        page,
+        'GRAND TOTAL',
+        PAGE_W - 220,
+        totalsY + 4,
+        {
+          font: bold,
+          size: TYPE.sm,
+        }
+      )
+
+      drawRightText(
+        page,
+        inr(total),
+        PAGE_W - 56,
+        totalsY + 2,
+        {
+          font: mono,
+          size: TYPE.lg,
+        }
+      )
+
+      // ================================================
+      // BANK DETAILS
+      // ================================================
+
+      drawText(
+        page,
+        'BANK DETAILS',
+        M + 16,
+        92,
+        {
+          font: bold,
+          size: TYPE.xs,
+        }
+      )
+
+      drawText(
+        page,
+        'A/C: 050020110000230',
+        M + 16,
+        76,
+        {
+          font: mono,
+          size: TYPE.xs,
+        }
+      )
+
+      drawText(
+        page,
+        'IFSC: BKID0000500',
+        M + 170,
+        76,
+        {
+          font: mono,
+          size: TYPE.xs,
+        }
+      )
+
+      // ================================================
+      // FOOTER
+      // ================================================
+
+      drawLine(
+        page,
+        M + 16,
+        58,
+        PAGE_W - M - 16,
+        58,
+        0.8,
+        MID
+      )
+
+      drawText(
+        page,
+        'THANK YOU FOR YOUR BUSINESS',
+        M + 16,
+        42,
+        {
+          font: bold,
+          size: TYPE.xs,
+          color: DARK,
+        }
+      )
+
+      drawRightText(
+        page,
+        'Generated digitally',
+        PAGE_W - M - 16,
+        42,
+        {
+          font: regular,
+          size: TYPE.xs,
+          color: DARK,
+        }
+      )
     }
 
-    // =================================================
-    // FOOTER
-    // =================================================
+    // ==================================================
+    // SAVE
+    // ==================================================
 
-    const footerH = 38
-
-    const footerY =
-      tableY - footerH + 1
-
-    box(
-      m,
-      footerY,
-      width - (m * 2),
-      footerH,
-      1
-    )
-
-    // TOTAL DIVIDER
-    const totalX = width - 180
-
-    line(
-      totalX,
-      footerY,
-      totalX,
-      footerY + footerH,
-      1
-    )
-
-    // =================================================
-    // BANK DETAILS
-    // =================================================
-
-    page.drawText(
-      'BANK DETAILS',
-      {
-        x: m + 10,
-        y: footerY + 22,
-        size: 7,
-        font: bold,
-        color: BLACK,
-      }
-    )
-
-    page.drawText(
-      'A/C: 050020110000230',
-      {
-        x: m + 10,
-        y: footerY + 9,
-        size: 7,
-        font: mono,
-        color: BLACK,
-      }
-    )
-
-    page.drawText(
-      'IFSC: BKID0000500',
-      {
-        x: m + 170,
-        y: footerY + 9,
-        size: 7,
-        font: mono,
-        color: BLACK,
-      }
-    )
-
-    // =================================================
-    // TOTALS
-    // =================================================
-
-    const tx = totalX + 10
-
-    page.drawText('SUBTOTAL', {
-      x: tx,
-      y: footerY + 22,
-      size: 7,
-      font,
-      color: BLACK,
-    })
-
-    const subText = inr(subtotal)
-
-    const subW =
-      mono.widthOfTextAtSize(
-        subText,
-        7
-      )
-
-    page.drawText(subText, {
-      x:
-        width -
-        m -
-        subW -
-        8,
-      y: footerY + 22,
-      size: 7,
-      font: mono,
-      color: BLACK,
-    })
-
-    page.drawText('GST', {
-      x: tx,
-      y: footerY + 10,
-      size: 7,
-      font,
-      color: BLACK,
-    })
-
-    const gstText = inr(gstAmt)
-
-    const gstW =
-      mono.widthOfTextAtSize(
-        gstText,
-        7
-      )
-
-    page.drawText(gstText, {
-      x:
-        width -
-        m -
-        gstW -
-        8,
-      y: footerY + 10,
-      size: 7,
-      font: mono,
-      color: BLACK,
-    })
-
-    // TOTAL LINE
-    line(
-      totalX,
-      footerY + 8,
-      width - m,
-      footerY + 8,
-      1
-    )
-
-    page.drawText('GRAND TOTAL', {
-      x: tx,
-      y: footerY - 2,
-      size: 9,
-      font: bold,
-      color: BLACK,
-    })
-
-    const totalText = inr(total)
-
-    const totalW =
-      mono.widthOfTextAtSize(
-        totalText,
-        10
-      )
-
-    page.drawText(totalText, {
-      x:
-        width -
-        m -
-        totalW -
-        8,
-      y: footerY - 2,
-      size: 10,
-      font: mono,
-      color: BLACK,
-    })
-
-    // =================================================
-    // SAVE PDF
-    // =================================================
-
-    const pdfBytes = await doc.save()
+    const pdfBytes =
+      await doc.save({
+        useObjectStreams: true,
+      })
 
     return new Response(pdfBytes, {
       status: 200,
@@ -685,15 +872,20 @@ export async function POST(req) {
       },
     })
   } catch (err) {
-    console.error('PDF error:', err)
+    console.error(
+      'PDF ERROR:',
+      err
+    )
 
     return Response.json(
       {
-        error: err.message,
+        error:
+          err?.message ||
+          'PDF generation failed',
       },
       {
         status: 500,
       }
     )
   }
-          }
+        }
