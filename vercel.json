@@ -1,1 +1,5 @@
-{"functions":{"src/app/api/generate-pdf/route.js":{"maxDuration":30}}}
+{
+  "buildCommand": "next build",
+  "outputDirectory": ".next",
+  "framework": "nextjs"
+}
