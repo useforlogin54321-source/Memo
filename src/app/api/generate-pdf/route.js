@@ -14,10 +14,22 @@ function parseDate(iso) {
 async function fetchImage(url) {
   if (!url) return null
   try {
-    const res = await fetch(url)
-    if (!res.ok) return null
-    return await res.arrayBuffer()
-  } catch {
+    console.log('Fetching image:', url)
+    const res = await fetch(url, { 
+      headers: { 
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'image/*'
+      }
+    })
+    if (!res.ok) {
+      console.error(`Image fetch failed: ${res.status} ${res.statusText}`)
+      return null
+    }
+    const buffer = await res.arrayBuffer()
+    console.log(`Image fetched successfully: ${buffer.byteLength} bytes`)
+    return buffer
+  } catch (err) {
+    console.error('Image fetch error:', err)
     return null
   }
 }
@@ -25,6 +37,11 @@ async function fetchImage(url) {
 export async function POST(req) {
   try {
     const { memo, items = [], firm, firmData = {}, customer = {}, subtotal = 0, gstAmt = 0, total = 0, memoType = 'sale' } = await req.json()
+
+    console.log('Firm data:', { 
+      logo_url: firmData.logo_url, 
+      qr_code_url: firmData.qr_code_url 
+    })
 
     const doc = await PDFDocument.create()
     const page = doc.addPage([595, 842])
@@ -37,14 +54,16 @@ export async function POST(req) {
     // Embed logo if available
     let logoImg = null
     if (firmData.logo_url) {
+      console.log('Attempting to fetch logo...')
       const logoBytes = await fetchImage(firmData.logo_url)
       if (logoBytes) {
         try {
-          logoImg = firmData.logo_url.toLowerCase().endsWith('.png') 
-            ? await doc.embedPng(logoBytes)
-            : await doc.embedJpg(logoBytes)
+          const isPng = firmData.logo_url.toLowerCase().includes('.png') || 
+                       firmData.logo_url.toLowerCase().includes('image/png')
+          logoImg = isPng ? await doc.embedPng(logoBytes) : await doc.embedJpg(logoBytes)
+          console.log('Logo embedded successfully')
         } catch (e) {
-          console.error('Logo embed failed:', e)
+          console.error('Logo embed error:', e.message)
         }
       }
     }
@@ -54,6 +73,9 @@ export async function POST(req) {
       const logoHeight = 50
       const logoWidth = (logoImg.width / logoImg.height) * logoHeight
       page.drawImage(logoImg, { x: 50, y: y - logoHeight + 10, width: logoWidth, height: logoHeight })
+      console.log('Logo drawn on page')
+    } else {
+      console.log('No logo to draw')
     }
 
     page.drawText(firmData.name || firm, { x: 50, y, size: 22, font: fontBold, color: rgb(0.067, 0.094, 0.153) })
@@ -120,14 +142,16 @@ export async function POST(req) {
     // Embed QR code if available
     let qrImg = null
     if (firmData.qr_code_url) {
+      console.log('Attempting to fetch QR code...')
       const qrBytes = await fetchImage(firmData.qr_code_url)
       if (qrBytes) {
         try {
-          qrImg = firmData.qr_code_url.toLowerCase().endsWith('.png')
-            ? await doc.embedPng(qrBytes)
-            : await doc.embedJpg(qrBytes)
+          const isPng = firmData.qr_code_url.toLowerCase().includes('.png') || 
+                       firmData.qr_code_url.toLowerCase().includes('image/png')
+          qrImg = isPng ? await doc.embedPng(qrBytes) : await doc.embedJpg(qrBytes)
+          console.log('QR code embedded successfully')
         } catch (e) {
-          console.error('QR embed failed:', e)
+          console.error('QR embed error:', e.message)
         }
       }
     }
@@ -139,6 +163,9 @@ export async function POST(req) {
     if (qrImg) {
       const qrSize = 80
       page.drawImage(qrImg, { x: width - 130, y: 50, width: qrSize, height: qrSize })
+      console.log('QR code drawn on page')
+    } else {
+      console.log('No QR code to draw')
     }
 
     const footerNote = firmData.footer_note || 'Thank you for your business!'
@@ -153,6 +180,7 @@ export async function POST(req) {
       headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename=memo.pdf', 'Content-Length': String(pdfBytes.length) },
     })
   } catch (err) {
-    return Response.json({ error: err.message }, { status: 500 })
+    console.error('PDF generation error:', err)
+    return Response.json({ error: err.message, stack: err.stack }, { status: 500 })
   }
-}
+                            }
