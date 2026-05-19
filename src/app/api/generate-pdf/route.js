@@ -7,16 +7,16 @@ StandardFonts,
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
-// ======================================================
+// =====================================================
 // COLORS
-// ======================================================
+// =====================================================
 
 const BLACK = rgb(0, 0, 0)
 const WHITE = rgb(1, 1, 1)
 
-// ======================================================
+// =====================================================
 // HELPERS
-// ======================================================
+// =====================================================
 
 const inr = (n) =>
 `Rs. ${Number(n || 0).toLocaleString(
@@ -27,9 +27,9 @@ maximumFractionDigits: 2,
 }
 )}`
 
-function parseDate(iso) {
+function parseDate(date) {
 try {
-return new Date(iso)
+return new Date(date)
 .toLocaleDateString('en-IN', {
 day: '2-digit',
 month: 'short',
@@ -71,12 +71,12 @@ x1,
 y1,
 x2,
 y2,
-thickness = 1
+t = 1
 ) {
 page.drawLine({
 start: { x: x1, y: y1 },
 end: { x: x2, y: y2 },
-thickness,
+thickness: t,
 color: BLACK,
 })
 }
@@ -87,61 +87,67 @@ x,
 y,
 w,
 h,
-thickness = 1
+bw = 1
 ) {
 page.drawRectangle({
 x,
 y,
 width: w,
 height: h,
+borderWidth: bw,
 borderColor: BLACK,
-borderWidth: thickness,
 })
 }
 
-function drawText(
+function text(
 page,
-text,
+value,
 x,
 y,
+{
+size = 9,
 font,
-size = 9
+color = BLACK,
+}
 ) {
-page.drawText(String(text || ''), {
+page.drawText(String(value || ''), {
 x,
 y,
 size,
 font,
-color: BLACK,
+color,
 })
 }
 
-function drawRightText(
+function rightText(
 page,
-text,
+value,
 rightX,
 y,
+{
+size = 9,
 font,
-size = 9
+color = BLACK,
+}
 ) {
 const width =
 font.widthOfTextAtSize(
-String(text),
+String(value),
 size
 )
 
-page.drawText(String(text), {
+page.drawText(String(value), {
 x: rightX - width,
 y,
 size,
 font,
-color: BLACK,
+color,
 })
 }
 
-// ======================================================
+// =====================================================
 // MAIN
-// ======================================================
+// =====================================================
 
 export async function POST(req) {
 try {
@@ -154,22 +160,26 @@ subtotal = 0,
 gstAmt = 0,
 total = 0,
 paymentStatus = 'Cash Paid',
-qrCodeUrl,
+gstBreakdown = {
+cgst: 0,
+sgst: 0,
+igst: 0,
+},
 } = await req.json()
 
-// ==================================================
+// =================================================
 // PDF
-// ==================================================
+// =================================================
 
 const doc =
 await PDFDocument.create()
 
 const page = doc.addPage([
+842,
 595,
-420,
 ])
 
-const regular =
+const font =
 await doc.embedFont(
 StandardFonts.Helvetica
 )
@@ -187,11 +197,11 @@ StandardFonts.Courier
 const { width, height } =
 page.getSize()
 
-const M = 10
+const M = 16
 
-// ==================================================
-// MASTER BORDER
-// ==================================================
+// =================================================
+// OUTER BORDER
+// =================================================
 
 box(
 page,
@@ -202,11 +212,12 @@ height - M * 2,
 1.5
 )
 
-// ==================================================
+// =================================================
 // HEADER
-// ==================================================
+// =================================================
 
-const headerH = 100
+const headerH = 120
+
 const headerY =
 height - M - headerH
 
@@ -219,126 +230,144 @@ headerH,
 1
 )
 
-// SPLIT INTO 2 HALVES
+// CENTER DIVIDER
 
-const midX = width / 2
+const halfX = width / 2
 
 line(
 page,
-midX,
+halfX,
 headerY,
-midX,
+halfX,
 headerY + headerH,
 1
 )
 
-// ==================================================
-// LOGO SECTION
-// ==================================================
+// =================================================
+// LOGO AREA
+// =================================================
 
 if (firmData.logo_url) {
-const logo =
+const img =
 await fetchImage(
 firmData.logo_url
 )
 
-if (logo) {
+if (img) {
 try {
-const img =
-logo.contentType.includes(
+const embedded =
+img.contentType.includes(
 'png'
 )
 ? await doc.embedPng(
-logo.bytes
+img.bytes
 )
 : await doc.embedJpg(
-logo.bytes
+img.bytes
 )
 
-page.drawImage(img, {
-x: M + 2,
-y: headerY + 2,
+page.drawImage(embedded, {
+x: M,
+y: headerY,
 width:
-midX - M - 4,
-height: headerH - 4,
+width / 2 - M,
+height: headerH,
 })
 } catch {}
 }
 }
 
-// ==================================================
+// =================================================
 // CUSTOMER DETAILS
-// ==================================================
+// =================================================
 
-drawText(
+const cx = halfX + 20
+
+text(
 page,
 'CUSTOMER DETAILS',
-midX + 20,
-headerY + 65,
-bold,
-14
+cx,
+headerY + 82,
+{
+size: 16,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 'Customer Name',
-midX + 20,
-headerY + 40,
-bold,
-10
+cx,
+headerY + 52,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 ':',
-midX + 150,
-headerY + 40,
-bold,
-10
+cx + 150,
+headerY + 52,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 customer.name ||
 'Walk-in Customer',
-midX + 170,
-headerY + 40,
-regular,
-10
+cx + 170,
+headerY + 52,
+{
+size: 12,
+font,
+}
 )
 
-drawText(
+text(
 page,
 'Mobile No',
-midX + 20,
-headerY + 15,
-bold,
-10
+cx,
+headerY + 24,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 ':',
-midX + 150,
-headerY + 15,
-bold,
-10
+cx + 150,
+headerY + 24,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
-customer.phone || '-',
-midX + 170,
-headerY + 15,
-regular,
-10
+customer.phone ||
+'N/A',
+cx + 170,
+headerY + 24,
+{
+size: 12,
+font,
+}
 )
 
-// ==================================================
+// =================================================
 // TITLE ROW
-// ==================================================
+// =================================================
 
-const titleH = 40
+const titleH = 44
+
 const titleY =
 headerY - titleH
 
@@ -351,21 +380,35 @@ titleH,
 1
 )
 
-drawText(
-page,
-'TAX INVOICE',
-width / 2 - 70,
-titleY + 10,
-bold,
+const title =
+'TAX INVOICE'
+
+const titleWidth =
+bold.widthOfTextAtSize(
+title,
 24
 )
 
-// ==================================================
-// INVOICE META ROW
-// ==================================================
+text(
+page,
+title,
+width / 2 -
+titleWidth / 2,
+titleY + 10,
+{
+size: 24,
+font: bold,
+}
+)
 
-const metaH = 32
-const metaY = titleY - metaH
+// =================================================
+// INVOICE META
+// =================================================
+
+const metaH = 36
+
+const metaY =
+titleY - metaH
 
 box(
 page,
@@ -376,69 +419,91 @@ metaH,
 1
 )
 
-drawText(
+line(
+page,
+width / 2,
+metaY,
+width / 2,
+metaY + metaH
+)
+
+text(
 page,
 'Invoice No',
 M + 20,
-metaY + 10,
-bold,
-10
+metaY + 11,
+{
+size: 11,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 ':',
-M + 120,
-metaY + 10,
-bold,
-10
+M + 130,
+metaY + 11,
+{
+size: 11,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
-memo?.id || 'DRAFT',
-M + 140,
-metaY + 10,
-mono,
-10
+memo?.id ||
+'INV-0001',
+M + 150,
+metaY + 11,
+{
+size: 11,
+font: mono,
+}
 )
 
-drawText(
+text(
 page,
 'Date',
-width - 170,
-metaY + 10,
-bold,
-10
+width / 2 + 40,
+metaY + 11,
+{
+size: 11,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 ':',
-width - 110,
-metaY + 10,
-bold,
-10
+width / 2 + 110,
+metaY + 11,
+{
+size: 11,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 parseDate(
 memo?.created_at
 ),
-width - 90,
-metaY + 10,
-mono,
-10
+width / 2 + 130,
+metaY + 11,
+{
+size: 11,
+font: mono,
+}
 )
 
-// ==================================================
+// =================================================
 // PRODUCT TABLE
-// ==================================================
+// =================================================
 
-const tableY = 130
-const tableH =
-metaY - tableY
+const tableH = 290
+
+const tableY =
+metaY - tableH
 
 box(
 page,
@@ -449,25 +514,12 @@ tableH,
 1
 )
 
-// HEADER ROW
+// COLUMN POSITIONS
 
-const th = 30
-
-line(
-page,
-M,
-metaY - th,
-width - M,
-metaY - th,
-1
-)
-
-// COLUMNS
-
-const c1 = M + 60
-const c2 = M + 360
-const c3 = M + 450
-const c4 = M + 530
+const c1 = M + 70
+const c2 = M + 460
+const c3 = M + 580
+const c4 = M + 720
 
 // VERTICAL LINES ONLY
 
@@ -478,110 +530,145 @@ page,
 x,
 tableY,
 x,
-metaY,
-1
+tableY + tableH
 )
 }
 )
 
-// TABLE HEADERS
+// HEADER LINE
 
-drawText(
+const headerLineY =
+tableY + tableH - 42
+
+line(
+page,
+M,
+headerLineY,
+width - M,
+headerLineY,
+1
+)
+
+// HEADERS
+
+text(
 page,
 'QTY',
 M + 18,
-metaY - 20,
-bold,
-10
+tableY + tableH - 28,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 'DESCRIPTION',
-c1 + 70,
-metaY - 20,
-bold,
-10
+c1 + 90,
+tableY + tableH - 28,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 'HSN',
-c2 + 25,
-metaY - 20,
-bold,
-10
+c2 + 34,
+tableY + tableH - 28,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 'RATE',
-c3 + 15,
-metaY - 20,
-bold,
-10
+c3 + 40,
+tableY + tableH - 28,
+{
+size: 12,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
 'AMOUNT',
-c4 + 10,
-metaY - 20,
-bold,
-10
+c4 + 25,
+tableY + tableH - 28,
+{
+size: 12,
+font: bold,
+}
 )
 
-// ==================================================
+// =================================================
 // ITEMS
-// ==================================================
+// =================================================
 
-let y = metaY - 55
+let rowY =
+tableY + tableH - 80
+
+const rowGap = 34
 
 items
-.slice(0, 7)
+.slice(0, 6)
 .forEach((item) => {
-drawText(
+text(
 page,
 item.quantity || 0,
-M + 20,
-y,
-regular,
-10
+M + 24,
+rowY,
+{
+size: 11,
+font,
+}
 )
 
-drawText(
+text(
 page,
 (
 item.name || '-'
 ).toUpperCase(),
-c1 + 10,
-y,
-regular,
-10
+c1 + 16,
+rowY,
+{
+size: 11,
+font,
+}
 )
 
-drawText(
+text(
 page,
 item.hsn_code ||
 '6101',
-c2 + 15,
-y,
-mono,
-10
+c2 + 24,
+rowY,
+{
+size: 11,
+font: mono,
+}
 )
 
-drawText(
+text(
 page,
 inr(
-item.unit_price || 0
+item.unit_price ||
+0
 ),
-c3 + 10,
-y,
-mono,
-10
+c3 + 16,
+rowY,
+{
+size: 11,
+font: mono,
+}
 )
 
-drawRightText(
+rightText(
 page,
 inr(
 (item.quantity ||
@@ -589,21 +676,24 @@ inr(
 (item.unit_price ||
 0)
 ),
-width - 20,
-y,
-mono,
-10
+width - M - 20,
+rowY,
+{
+size: 11,
+font: mono,
+}
 )
 
-y -= 28
+rowY -= rowGap
 })
 
-// ==================================================
+// =================================================
 // FOOTER
-// ==================================================
+// =================================================
 
-const footerH = 120
-const footerY = 10
+const footerH = 150
+
+const footerY = M
 
 box(
 page,
@@ -616,43 +706,46 @@ footerH,
 
 // 4 COLUMNS
 
-const f1 = M + 140
-const f2 = M + 290
-const f3 = M + 410
+const f1 = M + 180
+const f2 = M + 390
+const f3 = M + 560
 
-;[f1, f2, f3].forEach((x) => {
+;[f1, f2, f3].forEach(
+(x) => {
 line(
 page,
 x,
 footerY,
 x,
-footerY + footerH,
-1
+footerY + footerH
 )
-})
+}
+)
 
-// ==================================================
+// =================================================
 // COLUMN 1 - QR
-// ==================================================
+// =================================================
 
-drawText(
+text(
 page,
 'PAYMENT QR',
-M + 30,
-footerY + 95,
-bold,
-10
+M + 40,
+footerY + 118,
+{
+size: 14,
+font: bold,
+}
 )
 
-if (qrCodeUrl) {
+if (firmData.qr_url) {
 const qr =
 await fetchImage(
-qrCodeUrl
+firmData.qr_url
 )
 
 if (qr) {
 try {
-const img =
+const qrImg =
 qr.contentType.includes(
 'png'
 )
@@ -663,224 +756,277 @@ qr.bytes
 qr.bytes
 )
 
-page.drawImage(img, {
-x: M + 20,
-y: footerY + 18,
-width: 90,
-height: 90,
+page.drawImage(qrImg, {
+x: M + 35,
+y: footerY + 20,
+width: 100,
+height: 100,
 })
 } catch {}
 }
 }
 
-// ==================================================
+// =================================================
 // COLUMN 2 - GST BREAKDOWN
-// ==================================================
+// =================================================
 
-drawText(
+text(
 page,
 'GST BREAKDOWN',
-f1 + 20,
-footerY + 95,
-bold,
-10
+f1 + 36,
+footerY + 118,
+{
+size: 14,
+font: bold,
+}
 )
 
-drawText(
+const gstX = f1 + 20
+
+text(
 page,
 'CGST (9%)',
-f1 + 20,
-footerY + 70,
-regular,
-10
+gstX,
+footerY + 82,
+{
+size: 11,
+font,
+}
 )
 
-drawRightText(
+rightText(
 page,
-inr(gstAmt / 2),
+inr(
+gstBreakdown.cgst
+),
 f2 - 20,
-footerY + 70,
-mono,
-10
+footerY + 82,
+{
+size: 11,
+font: mono,
+}
 )
 
-drawText(
+text(
 page,
 'SGST (9%)',
-f1 + 20,
-footerY + 45,
-regular,
-10
+gstX,
+footerY + 54,
+{
+size: 11,
+font,
+}
 )
 
-drawRightText(
+rightText(
 page,
-inr(gstAmt / 2),
+inr(
+gstBreakdown.sgst
+),
 f2 - 20,
-footerY + 45,
-mono,
-10
+footerY + 54,
+{
+size: 11,
+font: mono,
+}
 )
 
-drawText(
+text(
 page,
-'IGST',
-f1 + 20,
-footerY + 20,
-regular,
-10
+'IGST (18%)',
+gstX,
+footerY + 26,
+{
+size: 11,
+font,
+}
 )
 
-drawRightText(
+rightText(
 page,
-'Rs. 0.00',
+inr(
+gstBreakdown.igst
+),
 f2 - 20,
-footerY + 20,
-mono,
-10
+footerY + 26,
+{
+size: 11,
+font: mono,
+}
 )
 
-// ==================================================
+// =================================================
 // COLUMN 3 - STATUS
-// ==================================================
+// =================================================
 
-drawText(
+text(
 page,
 'PAYMENT STATUS',
-f2 + 20,
-footerY + 95,
-bold,
-10
+f2 + 24,
+footerY + 118,
+{
+size: 14,
+font: bold,
+}
 )
 
-drawText(
+text(
 page,
-'Cash Paid',
-f2 + 20,
-footerY + 65,
-regular,
-10
+'• Cash Paid',
+f2 + 28,
+footerY + 82,
+{
+size: 12,
+font,
+}
 )
 
-drawText(
+text(
 page,
-'UPI Paid',
-f2 + 20,
-footerY + 40,
-regular,
-10
+'• UPI Paid',
+f2 + 28,
+footerY + 54,
+{
+size: 12,
+font,
+}
 )
 
-drawText(
+text(
 page,
-'Bill Balance',
-f2 + 20,
-footerY + 15,
-regular,
-10
+'• Bill Balance',
+f2 + 28,
+footerY + 26,
+{
+size: 12,
+font,
+}
 )
 
-// ==================================================
-// COLUMN 4 - TOTALS TABLE
-// ==================================================
+text(
+page,
+`Status : ${paymentStatus}`,
+f2 + 20,
+footerY + 4,
+{
+size: 11,
+font: bold,
+}
+)
 
-const totalX = f3
-const totalW = width - M - f3
+// =================================================
+// COLUMN 4 - TOTAL TABLE
+// =================================================
 
-// ROWS
+const tX = f3
+const tW = width - M - f3
+
+// INNER ROWS
 
 line(
 page,
-totalX,
-footerY + 80,
+tX,
+footerY + 100,
 width - M,
-footerY + 80,
-1
+footerY + 100
 )
 
 line(
 page,
-totalX,
-footerY + 40,
+tX,
+footerY + 50,
 width - M,
-footerY + 40,
-1
+footerY + 50
 )
 
-// VERTICAL SPLIT
+// INNER DIVIDER
+
+const innerX =
+tX + 120
 
 line(
 page,
-totalX + 120,
+innerX,
 footerY,
-totalX + 120,
-footerY + footerH,
-1
+innerX,
+footerY + footerH
 )
 
-// SUBTOTAL
+// ROW 1
 
-drawText(
+text(
 page,
 'SUB TOTAL',
-totalX + 18,
-footerY + 90,
-bold,
-11
+tX + 24,
+footerY + 118,
+{
+size: 13,
+font: bold,
+}
 )
 
-drawRightText(
+rightText(
 page,
 inr(subtotal),
-width - 20,
-footerY + 90,
-mono,
-11
+width - M - 20,
+footerY + 118,
+{
+size: 13,
+font: mono,
+}
 )
 
-// GST
+// ROW 2
 
-drawText(
+text(
 page,
 'GST TOTAL',
-totalX + 18,
-footerY + 50,
-bold,
-11
+tX + 24,
+footerY + 68,
+{
+size: 13,
+font: bold,
+}
 )
 
-drawRightText(
+rightText(
 page,
 inr(gstAmt),
-width - 20,
-footerY + 50,
-mono,
-11
+width - M - 20,
+footerY + 68,
+{
+size: 13,
+font: mono,
+}
 )
 
-// GRAND TOTAL
+// ROW 3
 
-drawText(
+text(
 page,
 'GRAND TOTAL',
-totalX + 18,
-footerY + 12,
-bold,
-13
+tX + 16,
+footerY + 18,
+{
+size: 16,
+font: bold,
+}
 )
 
-drawRightText(
+rightText(
 page,
 inr(total),
-width - 20,
-footerY + 12,
-mono,
-13
+width - M - 20,
+footerY + 18,
+{
+size: 16,
+font: mono,
+}
 )
 
-// ==================================================
-// SAVE
-// ==================================================
+// =================================================
+// SAVE PDF
+// =================================================
 
 const pdfBytes =
 await doc.save({
@@ -902,7 +1048,7 @@ console.error(err)
 return Response.json(
 {
 error:
-err.message ||
+err?.message ||
 'PDF generation failed',
 },
 {
