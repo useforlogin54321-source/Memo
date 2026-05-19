@@ -13,7 +13,7 @@ export const maxDuration = 30
 
 const BLACK = rgb(0, 0, 0)
 const WHITE = rgb(1, 1, 1)
-const GRAY = rgb(0.45, 0.45, 0.45)
+const GRAY = rgb(0.38, 0.38, 0.38)
 const LIGHT = rgb(0.97, 0.97, 0.97)
 const LIGHTER = rgb(0.985, 0.985, 0.985)
 
@@ -22,22 +22,22 @@ const LIGHTER = rgb(0.985, 0.985, 0.985)
 // ======================================================
 
 const PAGE = {
-  width: 595,
-  height: 842,
+  width: 595.28,
+  height: 841.89,
   margin: 24,
 }
 
 // ======================================================
-// FONT
+// TYPOGRAPHY
 // ======================================================
 
 const FONT = {
   xs: 7,
-  sm: 8,
+  sm: 8.5,
   md: 10,
   lg: 12,
-  xl: 16,
-  hero: 22,
+  xl: 18,
+  hero: 24,
 }
 
 // ======================================================
@@ -48,11 +48,11 @@ const TABLE = {
   qty: 55,
   desc: 250,
   hsn: 70,
-  rate: 95,
-  amount: 101,
+  rate: 90,
+  amount: 106,
 }
 
-const ROW_MIN_HEIGHT = 34
+const ROW_MIN_HEIGHT = 42
 
 // ======================================================
 // HELPERS
@@ -228,7 +228,7 @@ function line(
   y1,
   x2,
   y2,
-  thickness = 1
+  thickness = 0.5
 ) {
   page.drawLine({
     start: { x: x1, y: y1 },
@@ -312,7 +312,7 @@ function drawWrappedText(
   width,
   font,
   size = 9,
-  lineGap = 11,
+  lineGap = 12,
   maxLines = 10,
   color = BLACK
 ) {
@@ -346,7 +346,7 @@ function drawRight(
   width,
   font,
   size = 9,
-  padding = 6
+  padding = 12
 ) {
   const tw =
     font.widthOfTextAtSize(
@@ -383,12 +383,12 @@ function getRowHeight(
     desc,
     font,
     8,
-    TABLE.desc - 20
+    TABLE.desc - 24
   )
 
   return Math.max(
     ROW_MIN_HEIGHT,
-    lines.length * 12 + 14
+    lines.length * 14 + 18
   )
 }
 
@@ -414,7 +414,7 @@ function drawMasterBorder(
       PAGE.margin * 2,
     PAGE.height -
       PAGE.margin * 2,
-    1.5
+    1.2
   )
 }
 
@@ -452,10 +452,10 @@ function drawTableHeader(
   box(
     page,
     M,
-    topY - 28,
+    topY - 30,
     PAGE.width - M * 2,
-    28,
-    1,
+    30,
+    0.8,
     LIGHT
   )
 
@@ -468,55 +468,56 @@ function drawTableHeader(
     line(
       page,
       x,
-      PAGE.margin + 170,
+      PAGE.margin + 185,
       x,
-      topY
+      topY,
+      0.45
     )
   })
 
   text(
     page,
     'QTY',
-    cols.qty + 10,
-    topY - 18,
+    cols.qty + 12,
+    topY - 19,
     bold,
-    9
+    8.5
   )
 
   text(
     page,
     'DESCRIPTION',
-    cols.desc + 10,
-    topY - 18,
+    cols.desc + 12,
+    topY - 19,
     bold,
-    9
+    8.5
   )
 
   text(
     page,
     'HSN',
-    cols.hsn + 10,
-    topY - 18,
+    cols.hsn + 12,
+    topY - 19,
     bold,
-    9
+    8.5
   )
 
   text(
     page,
     'RATE',
-    cols.rate + 10,
-    topY - 18,
+    cols.rate + 12,
+    topY - 19,
     bold,
-    9
+    8.5
   )
 
   text(
     page,
     'AMOUNT',
-    cols.amount + 10,
-    topY - 18,
+    cols.amount + 12,
+    topY - 19,
     bold,
-    9
+    8.5
   )
 
   return cols
@@ -568,7 +569,7 @@ export async function POST(req) {
     // HEADER
     // ======================================================
 
-    const headerH = 110
+    const headerH = 125
 
     const headerY =
       PAGE.height -
@@ -580,7 +581,8 @@ export async function POST(req) {
       M,
       headerY,
       PAGE.width - M * 2,
-      headerH
+      headerH,
+      1
     )
 
     const leftW = 220
@@ -633,8 +635,8 @@ export async function POST(req) {
             let drawH =
               drawW / ratio
 
-            if (drawH > 80) {
-              drawH = 80
+            if (drawH > 82) {
+              drawH = 82
               drawW =
                 drawH * ratio
             }
@@ -646,7 +648,7 @@ export async function POST(req) {
                   drawW) /
                   2,
               y:
-                headerY + 15,
+                headerY + 20,
               width: drawW,
               height: drawH,
             })
@@ -656,21 +658,24 @@ export async function POST(req) {
     }
 
     // ======================================================
-    // COMPANY
+    // COMPANY INFO
     // ======================================================
 
-    const cx = M + leftW + 15
+    const cx = M + leftW + 18
 
     text(
       page,
       (
         firmData.name ||
         'YOUR COMPANY'
-      ).toUpperCase(),
+      )
+        .toUpperCase()
+        .split('')
+        .join(' '),
       cx,
-      headerY + 82,
+      headerY + 92,
       bold,
-      16
+      20
     )
 
     drawWrappedText(
@@ -678,11 +683,11 @@ export async function POST(req) {
       firmData.address ||
         'Company Address',
       cx,
-      headerY + 62,
+      headerY + 66,
       300,
       regular,
       9,
-      11,
+      14,
       3,
       GRAY
     )
@@ -693,7 +698,7 @@ export async function POST(req) {
         firmData.gstin || '-'
       }`,
       cx,
-      headerY + 26,
+      headerY + 24,
       regular,
       9
     )
@@ -704,7 +709,7 @@ export async function POST(req) {
         firmData.phone || '-'
       }`,
       cx + 170,
-      headerY + 26,
+      headerY + 24,
       regular,
       9
     )
@@ -714,14 +719,14 @@ export async function POST(req) {
     // ======================================================
 
     const titleY =
-      headerY - 42
+      headerY - 48
 
     box(
       page,
       M,
       titleY,
       PAGE.width - M * 2,
-      36,
+      38,
       1,
       BLACK
     )
@@ -750,14 +755,15 @@ export async function POST(req) {
     // ======================================================
 
     const customerY =
-      titleY - 72
+      titleY - 78
 
     box(
       page,
       M,
       customerY,
       PAGE.width - M * 2,
-      62
+      66,
+      1
     )
 
     line(
@@ -765,14 +771,14 @@ export async function POST(req) {
       PAGE.width / 2,
       customerY,
       PAGE.width / 2,
-      customerY + 62
+      customerY + 66
     )
 
     text(
       page,
       'BILL TO',
-      M + 10,
-      customerY + 42,
+      M + 12,
+      customerY + 45,
       bold,
       10
     )
@@ -781,17 +787,18 @@ export async function POST(req) {
       page,
       customer.name ||
         'Walk-in Customer',
-      M + 10,
-      customerY + 25,
+      M + 12,
+      customerY + 26,
       240,
       bold,
-      11
+      11,
+      14
     )
 
     text(
       page,
       customer.phone || '-',
-      M + 10,
+      M + 12,
       customerY + 8,
       regular,
       9
@@ -802,8 +809,8 @@ export async function POST(req) {
       `INVOICE NO : ${
         memo?.id || 'DRAFT'
       }`,
-      PAGE.width / 2 + 15,
-      customerY + 35,
+      PAGE.width / 2 + 18,
+      customerY + 38,
       mono,
       9
     )
@@ -813,18 +820,18 @@ export async function POST(req) {
       `DATE : ${parseDate(
         memo?.created_at
       )}`,
-      PAGE.width / 2 + 15,
-      customerY + 15,
+      PAGE.width / 2 + 18,
+      customerY + 16,
       mono,
       9
     )
 
     // ======================================================
-    // TABLE START
+    // TABLE
     // ======================================================
 
     let tableTop =
-      customerY - 10
+      customerY - 12
 
     let cols =
       drawTableHeader(
@@ -834,15 +841,11 @@ export async function POST(req) {
       )
 
     let cursorY =
-      tableTop - 45
+      tableTop - 50
 
-    const footerReserve = 190
+    const footerReserve = 215
 
     let runningTotal = 0
-
-    // ======================================================
-    // ITEMS
-    // ======================================================
 
     for (
       let i = 0;
@@ -856,10 +859,6 @@ export async function POST(req) {
           item,
           regular
         )
-
-      // ======================================================
-      // PAGINATION
-      // ======================================================
 
       if (
         cursorY - rowHeight <
@@ -875,8 +874,6 @@ export async function POST(req) {
           bold,
           9
         )
-
-        // NEW PAGE
 
         page =
           createPage(doc)
@@ -902,7 +899,7 @@ export async function POST(req) {
           )
 
         cursorY =
-          PAGE.height - 115
+          PAGE.height - 120
       }
 
       if (i % 2 === 0) {
@@ -911,7 +908,7 @@ export async function POST(req) {
           M,
           cursorY -
             rowHeight +
-            10,
+            12,
           PAGE.width -
             M * 2,
           rowHeight,
@@ -925,12 +922,12 @@ export async function POST(req) {
         M,
         cursorY -
           rowHeight +
-          10,
+          12,
         PAGE.width - M,
         cursorY -
           rowHeight +
-          10,
-        0.5
+          12,
+        0.35
       )
 
       text(
@@ -938,7 +935,7 @@ export async function POST(req) {
         String(
           item.quantity || 0
         ),
-        cols.qty + 10,
+        cols.qty + 12,
         cursorY,
         regular,
         9
@@ -955,12 +952,12 @@ export async function POST(req) {
       drawWrappedText(
         page,
         desc,
-        cols.desc + 8,
+        cols.desc + 12,
         cursorY,
-        TABLE.desc - 16,
+        TABLE.desc - 24,
         regular,
-        8,
-        10,
+        8.5,
+        12,
         5
       )
 
@@ -968,7 +965,7 @@ export async function POST(req) {
         page,
         item.hsn_code ||
           '6101',
-        cols.hsn + 10,
+        cols.hsn + 12,
         cursorY,
         mono,
         8,
@@ -984,7 +981,7 @@ export async function POST(req) {
         cursorY,
         TABLE.rate,
         mono,
-        8
+        8.5
       )
 
       const amount =
@@ -1000,7 +997,7 @@ export async function POST(req) {
         cursorY,
         TABLE.amount,
         mono,
-        8
+        8.5
       )
 
       cursorY -= rowHeight
@@ -1013,28 +1010,30 @@ export async function POST(req) {
     box(
       page,
       M,
-      178,
+      192,
       PAGE.width - M * 2,
-      32
+      34,
+      1
     )
 
     text(
       page,
       'AMOUNT IN WORDS',
-      M + 10,
-      196,
+      M + 12,
+      209,
       bold,
-      8
+      8.5
     )
 
     drawWrappedText(
       page,
       numberToWords(total),
-      M + 10,
-      184,
+      M + 12,
+      196,
       520,
       regular,
-      8
+      8.5,
+      12
     )
 
     // ======================================================
@@ -1046,20 +1045,22 @@ export async function POST(req) {
       M,
       M,
       PAGE.width - M * 2,
-      150
+      165,
+      1
     )
 
-    const fx1 = M + 180
+    // QR narrower now
+    const fx1 = M + 135
 
     const fx2 =
-      PAGE.width - 200
+      PAGE.width - 215
 
     line(
       page,
       fx1,
       M,
       fx1,
-      M + 150
+      M + 165
     )
 
     line(
@@ -1067,7 +1068,7 @@ export async function POST(req) {
       fx2,
       M,
       fx2,
-      M + 150
+      M + 165
     )
 
     // ======================================================
@@ -1077,10 +1078,10 @@ export async function POST(req) {
     text(
       page,
       'SCAN & PAY',
-      M + 48,
-      150,
+      M + 24,
+      172,
       bold,
-      10
+      9
     )
 
     if (qrCodeUrl) {
@@ -1093,19 +1094,7 @@ export async function POST(req) {
         if (qr?.bytes) {
           let img = null
 
-          // ======================================================
-          // SVG SUPPORT
-          // ======================================================
-
           if (
-            qr.type.includes(
-              'svg'
-            )
-          ) {
-            console.log(
-              'SVG QR DETECTED - Convert using sharp/resvg'
-            )
-          } else if (
             qr.type.includes(
               'png'
             )
@@ -1123,16 +1112,14 @@ export async function POST(req) {
 
           if (img) {
             page.drawImage(img, {
-              x: M + 35,
-              y: 48,
-              width: 95,
-              height: 95,
+              x: M + 28,
+              y: 62,
+              width: 72,
+              height: 72,
             })
           }
         }
-      } catch (err) {
-        console.error(err)
-      }
+      } catch {}
     }
 
     // ======================================================
@@ -1142,8 +1129,8 @@ export async function POST(req) {
     text(
       page,
       'BANK DETAILS',
-      fx1 + 12,
-      150,
+      fx1 + 14,
+      172,
       bold,
       9
     )
@@ -1165,19 +1152,19 @@ export async function POST(req) {
       'be taken back.',
     ]
 
-    let ty = 132
+    let ty = 152
 
     terms.forEach((t) => {
       text(
         page,
         t,
-        fx1 + 12,
+        fx1 + 14,
         ty,
         regular,
-        8
+        8.5
       )
 
-      ty -= 16
+      ty -= 17
     })
 
     // ======================================================
@@ -1191,89 +1178,90 @@ export async function POST(req) {
       PAGE.width -
         M -
         fx2,
-      150,
+      165,
+      1
+    )
+
+    text(
+      page,
+      'Subtotal',
+      fx2 + 14,
+      152,
+      regular,
+      9
+    )
+
+    drawRight(
+      page,
+      inr(subtotal),
+      fx2,
+      152,
+      PAGE.width -
+        M -
+        fx2,
+      mono,
+      9
+    )
+
+    text(
+      page,
+      'GST',
+      fx2 + 14,
+      124,
+      regular,
+      9
+    )
+
+    drawRight(
+      page,
+      inr(gstAmt),
+      fx2,
+      124,
+      PAGE.width -
+        M -
+        fx2,
+      mono,
+      9
+    )
+
+    // ======================================================
+    // GRAND TOTAL
+    // ======================================================
+
+    box(
+      page,
+      fx2 + 10,
+      48,
+      PAGE.width -
+        M -
+        fx2 -
+        20,
+      48,
       1,
       BLACK
     )
 
-    const totals = [
-      [
-        'SUBTOTAL',
-        inr(subtotal),
-      ],
-      [
-        'GST',
-        inr(gstAmt),
-      ],
-      [
-        'GRAND TOTAL',
-        inr(total),
-      ],
-    ]
+    text(
+      page,
+      'GRAND TOTAL',
+      fx2 + 20,
+      76,
+      bold,
+      13,
+      WHITE
+    )
 
-    let totalY = 125
-
-    totals.forEach(
-      ([label, value], i) => {
-        if (i === 2) {
-          box(
-            page,
-            fx2,
-            42,
-            PAGE.width -
-              M -
-              fx2,
-            40,
-            1,
-            BLACK
-          )
-
-          text(
-            page,
-            label,
-            fx2 + 12,
-            58,
-            bold,
-            11,
-            WHITE
-          )
-
-          drawRight(
-            page,
-            value,
-            fx2,
-            58,
-            PAGE.width -
-              M -
-              fx2,
-            mono,
-            11
-          )
-        } else {
-          text(
-            page,
-            label,
-            fx2 + 12,
-            totalY,
-            bold,
-            9
-          )
-
-          drawRight(
-            page,
-            value,
-            fx2,
-            totalY,
-            PAGE.width -
-              M -
-              fx2,
-            mono,
-            9
-          )
-        }
-
-        totalY -= 28
-      }
+    drawRight(
+      page,
+      inr(total),
+      fx2 + 10,
+      58,
+      PAGE.width -
+        M -
+        fx2 -
+        20,
+      mono,
+      13
     )
 
     // ======================================================
@@ -1283,7 +1271,7 @@ export async function POST(req) {
     text(
       page,
       'Authorized Signatory',
-      PAGE.width - 165,
+      PAGE.width - 175,
       18,
       regular,
       8,
@@ -1293,3 +1281,44 @@ export async function POST(req) {
     // ======================================================
     // FOOTER NOTE
     // ======================================================
+
+    if (firmData.footer_note) {
+      const note =
+        firmData.footer_note
+
+      const nw =
+        regular.widthOfTextAtSize(
+          note,
+          7
+        )
+
+      text(
+        page,
+        note,
+        (PAGE.width - nw) / 2,
+        5,
+        regular,
+        7,
+        GRAY
+      )
+    }
+
+    // ======================================================
+    // SAVE
+    // ======================================================
+
+    const pdfBytes =
+      await doc.save({
+        useObjectStreams: true,
+      })
+
+    return new Response(pdfBytes, {
+      status: 200,
+      headers: {
+        'Content-Type':
+          'application/pdf',
+        'Content-Disposition':
+          'inline; filename=invoice.pdf',
+      },
+    })
+  } ca
