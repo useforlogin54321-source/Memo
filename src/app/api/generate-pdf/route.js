@@ -12,22 +12,7 @@ export const maxDuration = 30
 // ======================================================
 
 const BLACK = rgb(0, 0, 0)
-const WHITE = rgb(1, 1, 1)
 const GRAY = rgb(0.45, 0.45, 0.45)
-const LIGHT = rgb(0.96, 0.96, 0.96)
-
-// ======================================================
-// TYPOGRAPHY
-// ======================================================
-
-const FONT = {
-  xs: 7,
-  sm: 8,
-  md: 10,
-  lg: 12,
-  xl: 16,
-  hero: 22,
-}
 
 // ======================================================
 // HELPERS
@@ -62,24 +47,21 @@ async function fetchImage(url) {
   if (!url) return null
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0',
-      },
-    })
+    const res = await fetch(url)
 
-    if (!res.ok) {
-      return null
-    }
+    if (!res.ok) return null
+
+    const contentType =
+      res.headers.get(
+        'content-type'
+      ) || ''
+
+    const bytes =
+      await res.arrayBuffer()
 
     return {
-      bytes:
-        await res.arrayBuffer(),
-      type:
-        res.headers.get(
-          'content-type'
-        ) || '',
+      bytes,
+      contentType,
     }
   } catch {
     return null
@@ -89,26 +71,6 @@ async function fetchImage(url) {
 // ======================================================
 // DRAW HELPERS
 // ======================================================
-
-function box(
-  page,
-  x,
-  y,
-  w,
-  h,
-  borderWidth = 1,
-  fill = null
-) {
-  page.drawRectangle({
-    x,
-    y,
-    width: w,
-    height: h,
-    borderColor: BLACK,
-    borderWidth,
-    color: fill || undefined,
-  })
-}
 
 function line(
   page,
@@ -126,17 +88,35 @@ function line(
   })
 }
 
-function text(
+function box(
   page,
-  value,
+  x,
+  y,
+  w,
+  h,
+  thickness = 1
+) {
+  page.drawRectangle({
+    x,
+    y,
+    width: w,
+    height: h,
+    borderColor: BLACK,
+    borderWidth: thickness,
+  })
+}
+
+function drawText(
+  page,
+  text,
   x,
   y,
   font,
-  size = FONT.md,
+  size = 9,
   color = BLACK
 ) {
   page.drawText(
-    String(value || ''),
+    String(text || ''),
     {
       x,
       y,
@@ -147,92 +127,89 @@ function text(
   )
 }
 
+// ======================================================
+// SAFE TEXT
+// ======================================================
+
 function fitText(
-  value,
+  text,
   font,
   size,
   maxWidth
 ) {
-  let txt = String(value || '')
+  let safe = String(text || '')
 
   while (
-    txt.length > 0 &&
     font.widthOfTextAtSize(
-      txt,
+      safe,
       size
     ) > maxWidth
   ) {
-    txt = txt.slice(0, -1)
+    safe = safe.slice(0, -1)
   }
 
-  return txt
+  return safe
 }
 
-function drawCellText(
+function drawSafeText(
   page,
-  value,
+  text,
   x,
   y,
   width,
   font,
-  size = 9,
-  padding = 6,
-  color = BLACK
+  size = 9
 ) {
   const safe = fitText(
-    value,
+    text,
     font,
     size,
-    width - padding * 2
+    width
   )
 
-  text(
-    page,
-    safe,
-    x + padding,
+  page.drawText(safe, {
+    x,
     y,
-    font,
     size,
-    color
-  )
+    font,
+    color: BLACK,
+  })
 }
 
-function drawCellRight(
+function drawRightText(
   page,
-  value,
-  x,
+  text,
+  rightX,
   y,
-  width,
   font,
   size = 9,
-  padding = 6,
-  color = BLACK
+  maxWidth = 120
 ) {
-  const safe = fitText(
-    value,
-    font,
-    size,
-    width - padding * 2
-  )
+  let safe =
+    String(text || '')
 
-  const tw =
+  while (
+    font.widthOfTextAtSize(
+      safe,
+      size
+    ) > maxWidth
+  ) {
+    safe = safe.slice(0, -1)
+  }
+
+  const width =
     font.widthOfTextAtSize(
       safe,
       size
     )
 
-  text(
-    page,
-    safe,
-    x +
-      width -
-      tw -
-      padding,
+  page.drawText(safe, {
+    x: rightX - width,
     y,
-    font,
     size,
-    color
-  )
+    font,
+    color: BLACK,
+  })
 }
 
 // ======================================================
@@ -259,8 +236,10 @@ export async function POST(req) {
     const doc =
       await PDFDocument.create()
 
-    const page =
-      doc.addPage([595, 420])
+    const page = doc.addPage([
+      595,
+      420,
+    ])
 
     const regular =
       await doc.embedFont(
@@ -299,27 +278,28 @@ export async function POST(req) {
     // HEADER
     // ==================================================
 
-    const headerH = 95
+    const headerH = 100
     const headerY =
       height - M - headerH
-
-    const halfW =
-      (width - M * 2) / 2
 
     box(
       page,
       M,
       headerY,
       width - M * 2,
-      headerH
+      headerH,
+      1
     )
+
+    const midX = width / 2
 
     line(
       page,
-      M + halfW,
+      midX,
       headerY,
-      M + halfW,
-      headerY + headerH
+      midX,
+      headerY + headerH,
+      1
     )
 
     // ==================================================
@@ -327,147 +307,102 @@ export async function POST(req) {
     // ==================================================
 
     if (firmData.logo_url) {
-      try {
-        const logo =
-          await fetchImage(
-            firmData.logo_url
-          )
+      const logo =
+        await fetchImage(
+          firmData.logo_url
+        )
 
-        if (logo?.bytes) {
-          let img = null
+      if (logo) {
+        try {
+          const img =
+            logo.contentType.includes(
+              'png'
+            )
+              ? await doc.embedPng(
+                  logo.bytes
+                )
+              : await doc.embedJpg(
+                  logo.bytes
+                )
 
-          try {
-            img =
-              await doc.embedPng(
-                logo.bytes
-              )
-          } catch {
-            img =
-              await doc.embedJpg(
-                logo.bytes
-              )
-          }
-
-          if (img) {
-            const areaW =
-              halfW - 10
-
-            const areaH =
-              headerH - 10
-
-            const ratio =
-              img.width /
-              img.height
-
-            let drawW = areaW
-            let drawH =
-              drawW / ratio
-
-            if (
-              drawH > areaH
-            ) {
-              drawH = areaH
-              drawW =
-                drawH * ratio
-            }
-
-            const lx =
-              M +
-              (areaW -
-                drawW) /
-                2 +
-              5
-
-            const ly =
-              headerY +
-              (areaH -
-                drawH) /
-                2 +
-              5
-
-            page.drawImage(img, {
-              x: lx,
-              y: ly,
-              width: drawW,
-              height: drawH,
-            })
-          }
-        }
-      } catch {}
+          page.drawImage(img, {
+            x: M + 2,
+            y: headerY + 2,
+            width:
+              midX - M - 4,
+            height:
+              headerH - 4,
+          })
+        } catch {}
+      }
     }
 
     // ==================================================
-    // CUSTOMER
+    // CUSTOMER DETAILS
     // ==================================================
 
-    drawCellText(
+    drawText(
       page,
       'Customer Name',
-      M + halfW + 12,
-      headerY + 58,
-      120,
-      regular,
-      10,
-      0,
-      GRAY
-    )
-
-    text(
-      page,
-      ':',
-      M + halfW + 130,
-      headerY + 58,
+      midX + 20,
+      headerY + 45,
       bold,
       10
     )
 
-    drawCellText(
+    drawText(
+      page,
+      ':',
+      midX + 145,
+      headerY + 45,
+      bold,
+      10
+    )
+
+    drawSafeText(
       page,
       customer.name ||
         'Walk-in Customer',
-      M + halfW + 140,
-      headerY + 58,
-      130,
-      bold,
+      midX + 160,
+      headerY + 45,
+      110,
+      regular,
       10
     )
 
-    drawCellText(
+    drawText(
       page,
       'Mobile No',
-      M + halfW + 12,
-      headerY + 30,
-      120,
-      regular,
-      10,
-      0,
-      GRAY
-    )
-
-    text(
-      page,
-      ':',
-      M + halfW + 130,
-      headerY + 30,
+      midX + 20,
+      headerY + 18,
       bold,
       10
     )
 
-    drawCellText(
+    drawText(
+      page,
+      ':',
+      midX + 145,
+      headerY + 18,
+      bold,
+      10
+    )
+
+    drawSafeText(
       page,
       customer.phone || '-',
-      M + halfW + 140,
-      headerY + 30,
-      130,
+      midX + 160,
+      headerY + 18,
+      110,
       regular,
       10
     )
 
     // ==================================================
-    // TITLE BAR
+    // TITLE ROW
     // ==================================================
 
-    const titleH = 38
+    const titleH = 40
     const titleY =
       headerY - titleH
 
@@ -477,34 +412,23 @@ export async function POST(req) {
       titleY,
       width - M * 2,
       titleH,
-      1,
-      BLACK
+      1
     )
 
-    const title =
-      'TAX INVOICE'
-
-    const titleW =
-      bold.widthOfTextAtSize(
-        title,
-        FONT.hero
-      )
-
-    text(
+    drawText(
       page,
-      title,
-      (width - titleW) / 2,
-      titleY + 8,
+      'TAX INVOICE',
+      width / 2 - 72,
+      titleY + 10,
       bold,
-      FONT.hero,
-      WHITE
+      24
     )
 
     // ==================================================
     // META ROW
     // ==================================================
 
-    const metaH = 30
+    const metaH = 32
     const metaY = titleY - metaH
 
     box(
@@ -512,223 +436,191 @@ export async function POST(req) {
       M,
       metaY,
       width - M * 2,
-      metaH
+      metaH,
+      1
     )
 
-    drawCellText(
+    drawText(
       page,
       'Invoice No',
-      M + 10,
-      metaY + 9,
-      100,
-      regular,
-      9,
-      0,
-      GRAY
+      M + 20,
+      metaY + 10,
+      bold,
+      10
     )
 
-    text(
+    drawText(
       page,
       ':',
-      M + 90,
-      metaY + 9,
+      M + 110,
+      metaY + 10,
       bold,
-      9
+      10
     )
 
-    drawCellText(
+    drawSafeText(
       page,
       memo?.id || 'DRAFT',
-      M + 100,
-      metaY + 9,
+      M + 125,
+      metaY + 10,
       180,
       mono,
-      9
+      10
     )
 
-    drawCellText(
+    drawText(
       page,
       'Date',
       width - 170,
-      metaY + 9,
-      40,
-      regular,
-      9,
-      0,
-      GRAY
+      metaY + 10,
+      bold,
+      10
     )
 
-    text(
+    drawText(
       page,
       ':',
-      width - 120,
-      metaY + 9,
+      width - 115,
+      metaY + 10,
       bold,
-      9
+      10
     )
 
-    drawCellText(
+    drawSafeText(
       page,
       parseDate(
         memo?.created_at
       ),
-      width - 110,
-      metaY + 9,
-      80,
+      width - 100,
+      metaY + 10,
+      75,
       mono,
-      9
+      10
     )
 
     // ==================================================
-    // TABLE
+    // PRODUCT TABLE
     // ==================================================
 
-    const tableBottom = 130
-    const tableTop = metaY
+    const tableY = 130
+    const tableH =
+      metaY - tableY
 
     box(
       page,
       M,
-      tableBottom,
+      tableY,
       width - M * 2,
-      tableTop - tableBottom
+      tableH,
+      1
     )
 
-    const th = 28
+    // ==================================================
+    // TABLE HEADER
+    // ==================================================
 
-    box(
+    const th = 30
+
+    line(
       page,
       M,
-      tableTop - th,
-      width - M * 2,
-      th,
-      1,
-      LIGHT
+      metaY - th,
+      width - M,
+      metaY - th,
+      1
     )
 
     // ==================================================
-    // COLUMN SYSTEM
+    // COLUMNS
     // ==================================================
 
-    const TABLE = {
-      qty: 55,
-      desc: 265,
-      hsn: 75,
-      rate: 85,
-      amount: 95,
-    }
-
-    const cols = {
-      qty: M,
-      desc: M + TABLE.qty,
-      hsn:
-        M +
-        TABLE.qty +
-        TABLE.desc,
-      rate:
-        M +
-        TABLE.qty +
-        TABLE.desc +
-        TABLE.hsn,
-      amount:
-        M +
-        TABLE.qty +
-        TABLE.desc +
-        TABLE.hsn +
-        TABLE.rate,
-    }
+    const c1 = M + 55
+    const c2 = M + 340
+    const c3 = M + 420
+    const c4 = M + 495
 
     // ==================================================
-    // VERTICALS
+    // VERTICAL LINES
     // ==================================================
 
-    ;[
-      cols.desc,
-      cols.hsn,
-      cols.rate,
-      cols.amount,
-    ].forEach((x) => {
-      line(
-        page,
-        x,
-        tableBottom,
-        x,
-        tableTop
-      )
-    })
+    ;[c1, c2, c3, c4].forEach(
+      (x) => {
+        line(
+          page,
+          x,
+          tableY,
+          x,
+          metaY,
+          1
+        )
+      }
+    )
 
     // ==================================================
     // TABLE HEADERS
     // ==================================================
 
-    drawCellText(
+    drawText(
       page,
       'QTY',
-      cols.qty,
-      tableTop - 18,
-      TABLE.qty,
+      M + 15,
+      metaY - 20,
       bold,
-      9
+      10
     )
 
-    drawCellText(
+    drawText(
       page,
       'DESCRIPTION',
-      cols.desc,
-      tableTop - 18,
-      TABLE.desc,
+      c1 + 10,
+      metaY - 20,
       bold,
-      9
+      10
     )
 
-    drawCellText(
+    drawText(
       page,
       'HSN',
-      cols.hsn,
-      tableTop - 18,
-      TABLE.hsn,
+      c2 + 10,
+      metaY - 20,
       bold,
-      9
+      10
     )
 
-    drawCellText(
+    drawText(
       page,
       'RATE',
-      cols.rate,
-      tableTop - 18,
-      TABLE.rate,
+      c3 + 10,
+      metaY - 20,
       bold,
-      9
+      10
     )
 
-    drawCellText(
+    drawText(
       page,
       'AMOUNT',
-      cols.amount,
-      tableTop - 18,
-      TABLE.amount,
+      c4 + 10,
+      metaY - 20,
       bold,
-      9
+      10
     )
 
     // ==================================================
     // ITEMS
     // ==================================================
 
-    let rowY =
-      tableTop - 50
+    let y = metaY - 55
 
     items
       .slice(0, 7)
       .forEach((item) => {
-        drawCellText(
+        drawText(
           page,
           item.quantity || 0,
-          cols.qty,
-          rowY,
-          TABLE.qty,
+          M + 18,
+          y,
           regular,
-          9
+          10
         )
 
         let desc = (
@@ -739,56 +631,57 @@ export async function POST(req) {
           desc += ` (${item.size})`
         }
 
-        drawCellText(
+        desc = desc.slice(0, 34)
+
+        drawSafeText(
           page,
           desc,
-          cols.desc,
-          rowY,
-          TABLE.desc,
+          c1 + 10,
+          y,
+          250,
           regular,
-          9
+          10
         )
 
-        drawCellText(
+        drawSafeText(
           page,
           item.hsn_code ||
             '6101',
-          cols.hsn,
-          rowY,
-          TABLE.hsn,
+          c2 + 10,
+          y,
+          55,
           mono,
-          8,
-          6,
-          GRAY
+          9
         )
 
-        drawCellRight(
+        drawRightText(
           page,
           inr(
             item.unit_price || 0
           ),
-          cols.rate,
-          rowY,
-          TABLE.rate,
+          c4 - 12,
+          y,
           mono,
-          8
+          9,
+          65
         )
 
-        drawCellRight(
+        drawRightText(
           page,
           inr(
-            (item.quantity || 0) *
+            (item.quantity ||
+              0) *
               (item.unit_price ||
                 0)
           ),
-          cols.amount,
-          rowY,
-          TABLE.amount,
+          width - 18,
+          y,
           mono,
-          8
+          9,
+          78
         )
 
-        rowY -= 25
+        y -= 28
       })
 
     // ==================================================
@@ -803,210 +696,205 @@ export async function POST(req) {
       M,
       footerY,
       width - M * 2,
-      footerH
+      footerH,
+      1
     )
 
-    const footerCols = {
-      qr: 130,
-      gst: 150,
-      status: 120,
-    }
+    // ==================================================
+    // FOOTER COLUMNS
+    // ==================================================
 
-    const fx1 =
-      M + footerCols.qr
+    const f1 = M + 140
+    const f2 = M + 290
+    const f3 = M + 410
 
-    const fx2 =
-      fx1 +
-      footerCols.gst
-
-    const fx3 =
-      fx2 +
-      footerCols.status
-
-    ;[fx1, fx2, fx3].forEach(
+    ;[f1, f2, f3].forEach(
       (x) => {
         line(
           page,
           x,
           footerY,
           x,
-          footerY + footerH
+          footerY +
+            footerH,
+          1
         )
       }
     )
 
     // ==================================================
-    // QR
+    // QR SECTION
     // ==================================================
 
-    text(
+    drawText(
       page,
       'PAYMENT QR',
-      M + 22,
+      M + 28,
       footerY + 95,
       bold,
-      9
+      10
     )
 
     if (qrCodeUrl) {
-      try {
-        const qr =
-          await fetchImage(
-            qrCodeUrl
-          )
+      const qr =
+        await fetchImage(
+          qrCodeUrl
+        )
 
-        if (qr?.bytes) {
-          let img = null
-
-          try {
-            img =
-              await doc.embedPng(
-                qr.bytes
-              )
-          } catch {
-            try {
-              img =
-                await doc.embedJpg(
+      if (qr) {
+        try {
+          const img =
+            qr.contentType.includes(
+              'png'
+            )
+              ? await doc.embedPng(
                   qr.bytes
                 )
-            } catch {}
-          }
+              : await doc.embedJpg(
+                  qr.bytes
+                )
 
-          if (img) {
-            const size = 76
-
-            page.drawImage(img, {
-              x:
-                M +
-                (footerCols.qr -
-                  size) /
-                  2,
-              y:
-                footerY + 20,
-              width: size,
-              height: size,
-            })
-          } else {
-            text(
-              page,
-              'INVALID QR',
-              M + 25,
-              footerY + 55,
-              regular,
-              8,
-              GRAY
-            )
-          }
+          page.drawImage(img, {
+            x: M + 20,
+            y: footerY + 18,
+            width: 90,
+            height: 90,
+          })
+        } catch (err) {
+          console.error(
+            'QR ERROR',
+            err
+          )
         }
-      } catch {}
+      }
     }
 
     // ==================================================
     // GST BREAKDOWN
     // ==================================================
 
-    text(
+    drawText(
       page,
       'GST BREAKDOWN',
-      fx1 + 15,
+      f1 + 18,
       footerY + 95,
       bold,
+      10
+    )
+
+    drawText(
+      page,
+      'CGST (9%)',
+      f1 + 18,
+      footerY + 70,
+      regular,
       9
     )
 
-    const gstRows = [
-      [
-        'CGST (9%)',
-        inr(gstAmt / 2),
-      ],
-      [
-        'SGST (9%)',
-        inr(gstAmt / 2),
-      ],
-      ['IGST', 'Rs. 0.00'],
-    ]
+    drawRightText(
+      page,
+      inr(gstAmt / 2),
+      f2 - 15,
+      footerY + 70,
+      mono,
+      9,
+      75
+    )
 
-    let gy =
-      footerY + 68
+    drawText(
+      page,
+      'SGST (9%)',
+      f1 + 18,
+      footerY + 45,
+      regular,
+      9
+    )
 
-    gstRows.forEach(([k, v]) => {
-      drawCellText(
-        page,
-        k,
-        fx1,
-        gy,
-        footerCols.gst,
-        regular,
-        8
-      )
+    drawRightText(
+      page,
+      inr(gstAmt / 2),
+      f2 - 15,
+      footerY + 45,
+      mono,
+      9,
+      75
+    )
 
-      drawCellRight(
-        page,
-        v,
-        fx1,
-        gy,
-        footerCols.gst,
-        mono,
-        8
-      )
+    drawText(
+      page,
+      'IGST',
+      f1 + 18,
+      footerY + 20,
+      regular,
+      9
+    )
 
-      gy -= 24
-    })
+    drawRightText(
+      page,
+      'Rs. 0.00',
+      f2 - 15,
+      footerY + 20,
+      mono,
+      9,
+      75
+    )
 
     // ==================================================
     // PAYMENT STATUS
     // ==================================================
 
-    text(
+    drawText(
       page,
       'PAYMENT STATUS',
-      fx2 + 15,
+      f2 + 18,
       footerY + 95,
       bold,
+      10
+    )
+
+    drawSafeText(
+      page,
+      'Cash Paid',
+      f2 + 18,
+      footerY + 65,
+      90,
+      regular,
       9
     )
 
-    const statusRows = [
-      'Cash Paid',
+    drawSafeText(
+      page,
       'UPI Paid',
+      f2 + 18,
+      footerY + 40,
+      90,
+      regular,
+      9
+    )
+
+    drawSafeText(
+      page,
       'Bill Balance',
-    ]
-
-    let sy =
-      footerY + 68
-
-    statusRows.forEach((s) => {
-      drawCellText(
-        page,
-        s,
-        fx2,
-        sy,
-        footerCols.status,
-        regular,
-        8
-      )
-
-      sy -= 24
-    })
+      f2 + 18,
+      footerY + 15,
+      90,
+      regular,
+      9
+    )
 
     // ==================================================
-    // TOTALS
+    // TOTAL TABLE
     // ==================================================
 
-    const totalX = fx3
-    const totalW =
-      width - M - totalX
-
-    const split =
-      totalX +
-      totalW * 0.42
+    const totalX = f3
 
     line(
       page,
       totalX,
       footerY + 80,
       width - M,
-      footerY + 80
+      footerY + 80,
+      1
     )
 
     line(
@@ -1014,90 +902,122 @@ export async function POST(req) {
       totalX,
       footerY + 40,
       width - M,
-      footerY + 40
+      footerY + 40,
+      1
     )
+
+    // VERTICAL SPLIT
+
+    const splitX =
+      totalX + 95
 
     line(
       page,
-      split,
+      splitX,
       footerY,
-      split,
-      footerY + footerH
+      splitX,
+      footerY + footerH,
+      1
     )
 
-    const totals = [
-      [
-        'SUB TOTAL',
-        inr(subtotal),
-        footerY + 90,
-        10,
-      ],
-      [
-        'GST TOTAL',
-        inr(gstAmt),
-        footerY + 50,
-        10,
-      ],
-      [
-        'GRAND TOTAL',
-        inr(total),
-        footerY + 12,
-        11,
-      ],
-    ]
+    // ==================================================
+    // SUB TOTAL
+    // ==================================================
 
-    totals.forEach(
-      ([label, value, ty, fs]) => {
-        drawCellText(
-          page,
-          label,
-          totalX,
-          ty,
-          split - totalX,
-          bold,
-          fs
-        )
+    drawSafeText(
+      page,
+      'SUB TOTAL',
+      totalX + 10,
+      footerY + 90,
+      80,
+      bold,
+      10
+    )
 
-        drawCellRight(
-          page,
-          value,
-          split,
-          ty,
-          width -
-            M -
-            split,
-          mono,
-          fs - 1
-        )
-      }
+    drawRightText(
+      page,
+      inr(subtotal),
+      width - 18,
+      footerY + 90,
+      mono,
+      10,
+      70
+    )
+
+    // ==================================================
+    // GST TOTAL
+    // ==================================================
+
+    drawSafeText(
+      page,
+      'GST TOTAL',
+      totalX + 10,
+      footerY + 50,
+      80,
+      bold,
+      10
+    )
+
+    drawRightText(
+      page,
+      inr(gstAmt),
+      width - 18,
+      footerY + 50,
+      mono,
+      10,
+      70
+    )
+
+    // ==================================================
+    // GRAND TOTAL
+    // ==================================================
+
+    drawSafeText(
+      page,
+      'GRAND TOTAL',
+      totalX + 10,
+      footerY + 12,
+      80,
+      bold,
+      11
+    )
+
+    drawRightText(
+      page,
+      inr(total),
+      width - 18,
+      footerY + 12,
+      mono,
+      11,
+      82
     )
 
     // ==================================================
     // FOOTER NOTE
     // ==================================================
 
-    const note =
-      firmData.footer_note ||
-      'Thank you for your business'
+    if (firmData.footer_note) {
+      const note =
+        fitText(
+          firmData.footer_note,
+          regular,
+          7,
+          260
+        )
 
-    const nw =
-      regular.widthOfTextAtSize(
+      drawText(
+        page,
         note,
-        7
+        width / 2 - 100,
+        4,
+        regular,
+        7,
+        GRAY
       )
-
-    text(
-      page,
-      note,
-      (width - nw) / 2,
-      4,
-      regular,
-      7,
-      GRAY
-    )
+    }
 
     // ==================================================
-    // SAVE
+    // SAVE PDF
     // ==================================================
 
     const pdfBytes =
@@ -1105,15 +1025,18 @@ export async function POST(req) {
         useObjectStreams: true,
       })
 
-    return new Response(pdfBytes, {
-      status: 200,
-      headers: {
-        'Content-Type':
-          'application/pdf',
-        'Content-Disposition':
-          'inline; filename=invoice.pdf',
-      },
-    })
+    return new Response(
+      pdfBytes,
+      {
+        status: 200,
+        headers: {
+          'Content-Type':
+            'application/pdf',
+          'Content-Disposition':
+            'inline; filename=invoice.pdf',
+        },
+      }
+    )
   } catch (err) {
     console.error(err)
 
@@ -1128,4 +1051,4 @@ export async function POST(req) {
       }
     )
   }
-              }
+      }
