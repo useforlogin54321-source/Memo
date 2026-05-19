@@ -1321,4 +1321,18 @@ export async function POST(req) {
           'inline; filename=invoice.pdf',
       },
     })
-  } ca
+  } catch (err) {
+    console.error(err)
+
+    return Response.json(
+      {
+        error:
+          err.message ||
+          'PDF generation failed',
+      },
+      {
+        status: 500,
+      }
+    )
+  }
+}
