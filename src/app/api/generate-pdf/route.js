@@ -1,1059 +1,289 @@
-import {
-PDFDocument,
-rgb,
-StandardFonts,
-} from 'pdf-lib'
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
-// =====================================================
-// COLORS
-// =====================================================
-
+const inr = (n) => `Rs. ${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const BLACK = rgb(0, 0, 0)
 const WHITE = rgb(1, 1, 1)
+const GRAY = rgb(0.45, 0.45, 0.45)
+const LIGHT = rgb(0.92, 0.92, 0.92)
 
-// =====================================================
-// HELPERS
-// =====================================================
-
-const inr = (n) =>
-`Rs. ${Number(n || 0).toLocaleString(
-'en-IN',
-{
-minimumFractionDigits: 2,
-maximumFractionDigits: 2,
-}
-)}`
-
-function parseDate(date) {
-try {
-return new Date(date)
-.toLocaleDateString('en-IN', {
-day: '2-digit',
-month: 'short',
-year: 'numeric',
-})
-.toUpperCase()
-} catch {
-return new Date()
-.toLocaleDateString('en-IN')
-.toUpperCase()
-}
+function parseDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch { return new Date().toLocaleDateString('en-IN') }
 }
 
 async function fetchImage(url) {
-if (!url) return null
-
-try {
-const res = await fetch(url)
-
-if (!res.ok) return null
-
-const contentType =
-res.headers.get('content-type') || ''
-
-const bytes = await res.arrayBuffer()
-
-return {
-bytes,
-contentType,
+  if (!url) return null
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }})
+    if (!res.ok) return null
+    return await res.arrayBuffer()
+  } catch { return null }
 }
-} catch {
-return null
-}
-}
-
-function line(
-page,
-x1,
-y1,
-x2,
-y2,
-t = 1
-) {
-page.drawLine({
-start: { x: x1, y: y1 },
-end: { x: x2, y: y2 },
-thickness: t,
-color: BLACK,
-})
-}
-
-function box(
-page,
-x,
-y,
-w,
-h,
-bw = 1
-) {
-page.drawRectangle({
-x,
-y,
-width: w,
-height: h,
-borderWidth: bw,
-borderColor: BLACK,
-})
-}
-
-function text(
-page,
-value,
-x,
-y,
-{
-size = 9,
-font,
-color = BLACK,
-}
-) {
-page.drawText(String(value || ''), {
-x,
-y,
-size,
-font,
-color,
-})
-}
-
-function rightText(
-page,
-value,
-rightX,
-y,
-{
-size = 9,
-font,
-color = BLACK,
-}
-) {
-const width =
-font.widthOfTextAtSize(
-String(value),
-size
-)
-
-page.drawText(String(value), {
-x: rightX - width,
-y,
-size,
-font,
-color,
-})
-}
-
-// =====================================================
-// MAIN
-// =====================================================
 
 export async function POST(req) {
-try {
-const {
-memo,
-items = [],
-customer = {},
-firmData = {},
-subtotal = 0,
-gstAmt = 0,
-total = 0,
-paymentStatus = 'Cash Paid',
-gstBreakdown = {
-cgst: 0,
-sgst: 0,
-igst: 0,
-},
-} = await req.json()
-
-// =================================================
-// PDF
-// =================================================
-
-const doc =
-await PDFDocument.create()
-
-const page = doc.addPage([
-842,
-595,
-])
-
-const font =
-await doc.embedFont(
-StandardFonts.Helvetica
-)
-
-const bold =
-await doc.embedFont(
-StandardFonts.HelveticaBold
-)
-
-const mono =
-await doc.embedFont(
-StandardFonts.Courier
-)
-
-const { width, height } =
-page.getSize()
-
-const M = 16
-
-// =================================================
-// OUTER BORDER
-// =================================================
-
-box(
-page,
-M,
-M,
-width - M * 2,
-height - M * 2,
-1.5
-)
-
-// =================================================
-// HEADER
-// =================================================
-
-const headerH = 120
-
-const headerY =
-height - M - headerH
-
-box(
-page,
-M,
-headerY,
-width - M * 2,
-headerH,
-1
-)
-
-// CENTER DIVIDER
-
-const halfX = width / 2
-
-line(
-page,
-halfX,
-headerY,
-halfX,
-headerY + headerH,
-1
-)
-
-// =================================================
-// LOGO AREA
-// =================================================
-
-if (firmData.logo_url) {
-const img =
-await fetchImage(
-firmData.logo_url
-)
-
-if (img) {
-try {
-const embedded =
-img.contentType.includes(
-'png'
-)
-? await doc.embedPng(
-img.bytes
-)
-: await doc.embedJpg(
-img.bytes
-)
-
-page.drawImage(embedded, {
-x: M,
-y: headerY,
-width:
-width / 2 - M,
-height: headerH,
-})
-} catch {}
-}
-}
-
-// =================================================
-// CUSTOMER DETAILS
-// =================================================
-
-const cx = halfX + 20
-
-text(
-page,
-'CUSTOMER DETAILS',
-cx,
-headerY + 82,
-{
-size: 16,
-font: bold,
-}
-)
-
-text(
-page,
-'Customer Name',
-cx,
-headerY + 52,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-':',
-cx + 150,
-headerY + 52,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-customer.name ||
-'Walk-in Customer',
-cx + 170,
-headerY + 52,
-{
-size: 12,
-font,
-}
-)
-
-text(
-page,
-'Mobile No',
-cx,
-headerY + 24,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-':',
-cx + 150,
-headerY + 24,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-customer.phone ||
-'N/A',
-cx + 170,
-headerY + 24,
-{
-size: 12,
-font,
-}
-)
-
-// =================================================
-// TITLE ROW
-// =================================================
-
-const titleH = 44
-
-const titleY =
-headerY - titleH
-
-box(
-page,
-M,
-titleY,
-width - M * 2,
-titleH,
-1
-)
-
-const title =
-'TAX INVOICE'
-
-const titleWidth =
-bold.widthOfTextAtSize(
-title,
-24
-)
-
-text(
-page,
-title,
-width / 2 -
-titleWidth / 2,
-titleY + 10,
-{
-size: 24,
-font: bold,
-}
-)
-
-// =================================================
-// INVOICE META
-// =================================================
-
-const metaH = 36
-
-const metaY =
-titleY - metaH
-
-box(
-page,
-M,
-metaY,
-width - M * 2,
-metaH,
-1
-)
-
-line(
-page,
-width / 2,
-metaY,
-width / 2,
-metaY + metaH
-)
-
-text(
-page,
-'Invoice No',
-M + 20,
-metaY + 11,
-{
-size: 11,
-font: bold,
-}
-)
-
-text(
-page,
-':',
-M + 130,
-metaY + 11,
-{
-size: 11,
-font: bold,
-}
-)
-
-text(
-page,
-memo?.id ||
-'INV-0001',
-M + 150,
-metaY + 11,
-{
-size: 11,
-font: mono,
-}
-)
-
-text(
-page,
-'Date',
-width / 2 + 40,
-metaY + 11,
-{
-size: 11,
-font: bold,
-}
-)
-
-text(
-page,
-':',
-width / 2 + 110,
-metaY + 11,
-{
-size: 11,
-font: bold,
-}
-)
-
-text(
-page,
-parseDate(
-memo?.created_at
-),
-width / 2 + 130,
-metaY + 11,
-{
-size: 11,
-font: mono,
-}
-)
-
-// =================================================
-// PRODUCT TABLE
-// =================================================
-
-const tableH = 290
-
-const tableY =
-metaY - tableH
-
-box(
-page,
-M,
-tableY,
-width - M * 2,
-tableH,
-1
-)
-
-// COLUMN POSITIONS
-
-const c1 = M + 70
-const c2 = M + 460
-const c3 = M + 580
-const c4 = M + 720
-
-// VERTICAL LINES ONLY
-
-;[c1, c2, c3, c4].forEach(
-(x) => {
-line(
-page,
-x,
-tableY,
-x,
-tableY + tableH
-)
-}
-)
-
-// HEADER LINE
-
-const headerLineY =
-tableY + tableH - 42
-
-line(
-page,
-M,
-headerLineY,
-width - M,
-headerLineY,
-1
-)
-
-// HEADERS
-
-text(
-page,
-'QTY',
-M + 18,
-tableY + tableH - 28,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-'DESCRIPTION',
-c1 + 90,
-tableY + tableH - 28,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-'HSN',
-c2 + 34,
-tableY + tableH - 28,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-'RATE',
-c3 + 40,
-tableY + tableH - 28,
-{
-size: 12,
-font: bold,
-}
-)
-
-text(
-page,
-'AMOUNT',
-c4 + 25,
-tableY + tableH - 28,
-{
-size: 12,
-font: bold,
-}
-)
-
-// =================================================
-// ITEMS
-// =================================================
-
-let rowY =
-tableY + tableH - 80
-
-const rowGap = 34
-
-items
-.slice(0, 6)
-.forEach((item) => {
-text(
-page,
-item.quantity || 0,
-M + 24,
-rowY,
-{
-size: 11,
-font,
-}
-)
-
-text(
-page,
-(
-item.name || '-'
-).toUpperCase(),
-c1 + 16,
-rowY,
-{
-size: 11,
-font,
-}
-)
-
-text(
-page,
-item.hsn_code ||
-'6101',
-c2 + 24,
-rowY,
-{
-size: 11,
-font: mono,
-}
-)
-
-text(
-page,
-inr(
-item.unit_price ||
-0
-),
-c3 + 16,
-rowY,
-{
-size: 11,
-font: mono,
-}
-)
-
-rightText(
-page,
-inr(
-(item.quantity ||
-0) *
-(item.unit_price ||
-0)
-),
-width - M - 20,
-rowY,
-{
-size: 11,
-font: mono,
-}
-)
-
-rowY -= rowGap
-})
-
-// =================================================
-// FOOTER
-// =================================================
-
-const footerH = 150
-
-const footerY = M
-
-box(
-page,
-M,
-footerY,
-width - M * 2,
-footerH,
-1
-)
-
-// 4 COLUMNS
-
-const f1 = M + 180
-const f2 = M + 390
-const f3 = M + 560
-
-;[f1, f2, f3].forEach(
-(x) => {
-line(
-page,
-x,
-footerY,
-x,
-footerY + footerH
-)
-}
-)
-
-// =================================================
-// COLUMN 1 - QR
-// =================================================
-
-text(
-page,
-'PAYMENT QR',
-M + 40,
-footerY + 118,
-{
-size: 14,
-font: bold,
-}
-)
-
-if (firmData.qr_url) {
-const qr =
-await fetchImage(
-firmData.qr_url
-)
-
-if (qr) {
-try {
-const qrImg =
-qr.contentType.includes(
-'png'
-)
-? await doc.embedPng(
-qr.bytes
-)
-: await doc.embedJpg(
-qr.bytes
-)
-
-page.drawImage(qrImg, {
-x: M + 35,
-y: footerY + 20,
-width: 100,
-height: 100,
-})
-} catch {}
-}
-}
-
-// =================================================
-// COLUMN 2 - GST BREAKDOWN
-// =================================================
-
-text(
-page,
-'GST BREAKDOWN',
-f1 + 36,
-footerY + 118,
-{
-size: 14,
-font: bold,
-}
-)
-
-const gstX = f1 + 20
-
-text(
-page,
-'CGST (9%)',
-gstX,
-footerY + 82,
-{
-size: 11,
-font,
-}
-)
-
-rightText(
-page,
-inr(
-gstBreakdown.cgst
-),
-f2 - 20,
-footerY + 82,
-{
-size: 11,
-font: mono,
-}
-)
-
-text(
-page,
-'SGST (9%)',
-gstX,
-footerY + 54,
-{
-size: 11,
-font,
-}
-)
-
-rightText(
-page,
-inr(
-gstBreakdown.sgst
-),
-f2 - 20,
-footerY + 54,
-{
-size: 11,
-font: mono,
-}
-)
-
-text(
-page,
-'IGST (18%)',
-gstX,
-footerY + 26,
-{
-size: 11,
-font,
-}
-)
-
-rightText(
-page,
-inr(
-gstBreakdown.igst
-),
-f2 - 20,
-footerY + 26,
-{
-size: 11,
-font: mono,
-}
-)
-
-// =================================================
-// COLUMN 3 - STATUS
-// =================================================
-
-text(
-page,
-'PAYMENT STATUS',
-f2 + 24,
-footerY + 118,
-{
-size: 14,
-font: bold,
-}
-)
-
-text(
-page,
-'• Cash Paid',
-f2 + 28,
-footerY + 82,
-{
-size: 12,
-font,
-}
-)
-
-text(
-page,
-'• UPI Paid',
-f2 + 28,
-footerY + 54,
-{
-size: 12,
-font,
-}
-)
-
-text(
-page,
-'• Bill Balance',
-f2 + 28,
-footerY + 26,
-{
-size: 12,
-font,
-}
-)
-
-text(
-page,
-`Status : ${paymentStatus}`,
-f2 + 20,
-footerY + 4,
-{
-size: 11,
-font: bold,
-}
-)
-
-// =================================================
-// COLUMN 4 - TOTAL TABLE
-// =================================================
-
-const tX = f3
-const tW = width - M - f3
-
-// INNER ROWS
-
-line(
-page,
-tX,
-footerY + 100,
-width - M,
-footerY + 100
-)
-
-line(
-page,
-tX,
-footerY + 50,
-width - M,
-footerY + 50
-)
-
-// INNER DIVIDER
-
-const innerX =
-tX + 120
-
-line(
-page,
-innerX,
-footerY,
-innerX,
-footerY + footerH
-)
-
-// ROW 1
-
-text(
-page,
-'SUB TOTAL',
-tX + 24,
-footerY + 118,
-{
-size: 13,
-font: bold,
-}
-)
-
-rightText(
-page,
-inr(subtotal),
-width - M - 20,
-footerY + 118,
-{
-size: 13,
-font: mono,
-}
-)
-
-// ROW 2
-
-text(
-page,
-'GST TOTAL',
-tX + 24,
-footerY + 68,
-{
-size: 13,
-font: bold,
-}
-)
-
-rightText(
-page,
-inr(gstAmt),
-width - M - 20,
-footerY + 68,
-{
-size: 13,
-font: mono,
-}
-)
-
-// ROW 3
-
-text(
-page,
-'GRAND TOTAL',
-tX + 16,
-footerY + 18,
-{
-size: 16,
-font: bold,
-}
-)
-
-rightText(
-page,
-inr(total),
-width - M - 20,
-footerY + 18,
-{
-size: 16,
-font: mono,
-}
-)
-
-// =================================================
-// SAVE PDF
-// =================================================
-
-const pdfBytes =
-await doc.save({
-useObjectStreams: true,
-})
-
-return new Response(pdfBytes, {
-status: 200,
-headers: {
-'Content-Type':
-'application/pdf',
-'Content-Disposition':
-'inline; filename=invoice.pdf',
-},
-})
-} catch (err) {
-console.error(err)
-
-return Response.json(
-{
-error:
-err?.message ||
-'PDF generation failed',
-},
-{
-status: 500,
-}
-)
-}
+  try {
+    const { memo, items = [], firm, firmData = {}, customer = {}, subtotal = 0, gstAmt = 0, total = 0, memoType = 'sale' } = await req.json()
+
+    const doc = await PDFDocument.create()
+    const page = doc.addPage([595, 842])
+    const font = await doc.embedFont(StandardFonts.Helvetica)
+    const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+    
+    const { width, height } = page.getSize()
+    const m = 30
+    let y = height - m
+
+    // === 1. HEADER - TWO EQUAL HALVES ===
+    const headerH = 80
+    const halfW = (width - 2 * m) / 2
+
+    // Left box - Logo (fills entire box, no margin)
+    page.drawRectangle({ x: m, y: y - headerH, width: halfW, height: headerH, borderColor: BLACK, borderWidth: 1 })
+    
+    if (firmData.logo_url) {
+      const logoBytes = await fetchImage(firmData.logo_url)
+      if (logoBytes) {
+        try {
+          const isPng = firmData.logo_url.toLowerCase().includes('.png')
+          const logoImg = isPng ? await doc.embedPng(logoBytes) : await doc.embedJpg(logoBytes)
+          
+          // Scale logo to fit the box perfectly
+          const boxAspect = halfW / headerH
+          const imgAspect = logoImg.width / logoImg.height
+          let logoW, logoH
+          
+          if (imgAspect > boxAspect) {
+            logoW = halfW
+            logoH = halfW / imgAspect
+          } else {
+            logoH = headerH
+            logoW = headerH * imgAspect
+          }
+          
+          const logoX = m + (halfW - logoW) / 2
+          const logoY = y - headerH + (headerH - logoH) / 2
+          
+          page.drawImage(logoImg, { x: logoX, y: logoY, width: logoW, height: logoH })
+        } catch (e) {
+          console.error('Logo error:', e)
+        }
+      }
+    }
+
+    // Right box - Customer details
+    page.drawRectangle({ x: m + halfW, y: y - headerH, width: halfW, height: headerH, borderColor: BLACK, borderWidth: 1 })
+    
+    let custY = y - 25
+    page.drawText('Customer Name:', { x: m + halfW + 10, y: custY, size: 9, font, color: GRAY })
+    custY -= 15
+    page.drawText(customer.name || 'Walk-in Customer', { x: m + halfW + 10, y: custY, size: 11, font: fontBold })
+    custY -= 25
+    page.drawText('Mobile No:', { x: m + halfW + 10, y: custY, size: 9, font, color: GRAY })
+    custY -= 15
+    page.drawText(customer.phone || 'N/A', { x: m + halfW + 10, y: custY, size: 10, font })
+
+    y -= headerH + 15
+
+    // === 2. DOCUMENT HEADING - LONG ROW ===
+    const headingH = 35
+    page.drawRectangle({ x: m, y: y - headingH, width: width - 2 * m, height: headingH, borderColor: BLACK, borderWidth: 1, color: BLACK })
+    
+    const invoiceType = memoType === 'order' ? 'ORDER INVOICE' : 'TAX INVOICE'
+    const headingText = invoiceType + ' #' + (memo?.id || 'DRAFT').toString().slice(0, 12).toUpperCase()
+    const headingW = fontBold.widthOfTextAtSize(headingText, 14)
+    page.drawText(headingText, { x: (width - headingW) / 2, y: y - 22, size: 14, font: fontBold, color: WHITE })
+    
+    const dateText = parseDate(memo?.created_at)
+    const dateW = font.widthOfTextAtSize(dateText, 9)
+    page.drawText(dateText, { x: width - m - dateW - 10, y: y - 22, size: 9, font, color: WHITE })
+
+    y -= headingH + 15
+
+    // === 3. PRODUCT TABLE - VERTICAL LINES ONLY ===
+    const tableTop = y
+    const rowH = 20
+    const minRows = 12
+
+    // Column definitions
+    const cols = [
+      { x: m, w: 40, label: 'SR' },
+      { x: m + 40, w: 50, label: 'QTY' },
+      { x: m + 90, w: 200, label: 'DESCRIPTION' },
+      { x: m + 290, w: 60, label: 'HSN' },
+      { x: m + 350, w: 70, label: 'RATE' },
+      { x: m + 420, w: width - 2 * m - 420, label: 'AMOUNT' }
+    ]
+
+    // Table header
+    page.drawRectangle({ x: m, y: y - rowH, width: width - 2 * m, height: rowH, borderColor: BLACK, borderWidth: 1, color: LIGHT })
+    cols.forEach((col, idx) => {
+      if (idx < cols.length - 1) {
+        page.drawLine({ 
+          start: { x: col.x + col.w, y: y - rowH }, 
+          end: { x: col.x + col.w, y: y - rowH - (items.length + 1) * rowH }, 
+          thickness: 1, 
+          color: BLACK 
+        })
+      }
+      page.drawText(col.label, { x: col.x + 5, y: y - 13, size: 9, font: fontBold })
+    })
+    y -= rowH
+
+    // Items (no horizontal lines between rows)
+    items.forEach((item, idx) => {
+      page.drawText(String(idx + 1), { x: cols[0].x + 5, y: y - 13, size: 9, font })
+      page.drawText(String(item.quantity), { x: cols[1].x + 5, y: y - 13, size: 9, font })
+      
+      let desc = (item.name || '—').slice(0, 32)
+      if (item.size) desc += ` (${item.size})`
+      page.drawText(desc, { x: cols[2].x + 5, y: y - 13, size: 9, font })
+      
+      page.drawText(item.hsn_code || '6101', { x: cols[3].x + 5, y: y - 13, size: 8, font, color: GRAY })
+      page.drawText(inr(item.unit_price), { x: cols[4].x + 5, y: y - 13, size: 9, font })
+      
+      const amt = inr(item.unit_price * item.quantity)
+      const amtW = font.widthOfTextAtSize(amt, 9)
+      page.drawText(amt, { x: cols[5].x + cols[5].w - amtW - 5, y: y - 13, size: 9, font: fontBold })
+      
+      y -= rowH
+    })
+
+    // Empty rows to maintain table height
+    for (let i = items.length; i < minRows; i++) {
+      y -= rowH
+    }
+
+    // Table border (top, bottom, left, right only)
+    page.drawRectangle({ 
+      x: m, 
+      y: y, 
+      width: width - 2 * m, 
+      height: tableTop - y, 
+      borderColor: BLACK, 
+      borderWidth: 1 
+    })
+
+    y -= 20
+
+    // === 4. FOOTER - 4 COLUMNS ===
+    const footerH = 110
+    const col1W = 100  // QR
+    const col2W = 150  // GST breakdown
+    const col3W = 130  // Payment status
+    const col4W = width - 2 * m - col1W - col2W - col3W  // Totals
+
+    // Column 1 - Payment QR
+    page.drawRectangle({ x: m, y: y - footerH, width: col1W, height: footerH, borderColor: BLACK, borderWidth: 1 })
+    
+    if (firmData.qr_code_url) {
+      const qrBytes = await fetchImage(firmData.qr_code_url)
+      if (qrBytes) {
+        try {
+          const isPng = firmData.qr_code_url.toLowerCase().includes('.png')
+          const qrImg = isPng ? await doc.embedPng(qrBytes) : await doc.embedJpg(qrBytes)
+          const qrSize = 80
+          page.drawImage(qrImg, { 
+            x: m + (col1W - qrSize) / 2, 
+            y: y - footerH + (footerH - qrSize) / 2, 
+            width: qrSize, 
+            height: qrSize 
+          })
+        } catch (e) {
+          console.error('QR error:', e)
+        }
+      }
+    }
+
+    // Column 2 - GST Breakdown
+    page.drawRectangle({ x: m + col1W, y: y - footerH, width: col2W, height: footerH, borderColor: BLACK, borderWidth: 1 })
+    
+    let gstY = y - 20
+    page.drawText('GST BREAKDOWN', { x: m + col1W + 8, y: gstY, size: 8, font: fontBold })
+    gstY -= 18
+    
+    if (gstAmt > 0) {
+      page.drawText(`Taxable: ${inr(subtotal)}`, { x: m + col1W + 8, y: gstY, size: 8, font, color: GRAY })
+      gstY -= 14
+      page.drawText(`CGST @ 2.5%: ${inr(gstAmt / 2)}`, { x: m + col1W + 8, y: gstY, size: 8, font })
+      gstY -= 14
+      page.drawText(`SGST @ 2.5%: ${inr(gstAmt / 2)}`, { x: m + col1W + 8, y: gstY, size: 8, font })
+      gstY -= 14
+      page.drawText(`Total GST: ${inr(gstAmt)}`, { x: m + col1W + 8, y: gstY, size: 8, font: fontBold })
+    } else {
+      page.drawText('No GST', { x: m + col1W + 8, y: gstY, size: 8, font, color: GRAY })
+    }
+
+    // Column 3 - Payment Status (LOGIC-BASED)
+    page.drawRectangle({ x: m + col1W + col2W, y: y - footerH, width: col3W, height: footerH, borderColor: BLACK, borderWidth: 1 })
+    
+    let payY = y - 20
+    page.drawText('PAYMENT STATUS', { x: m + col1W + col2W + 8, y: payY, size: 8, font: fontBold })
+    payY -= 18
+    
+    // Logic-based payment status
+    const paidAmount = memo?.paid_amount || 0
+    const balance = total - paidAmount
+    const paymentMethod = memo?.payment_method || 'pending'
+    
+    if (paidAmount >= total) {
+      page.drawText('PAID IN FULL', { x: m + col1W + col2W + 8, y: payY, size: 9, font: fontBold, color: rgb(0, 0.5, 0) })
+      payY -= 14
+      page.drawText(`via ${paymentMethod.toUpperCase()}`, { x: m + col1W + col2W + 8, y: payY, size: 8, font })
+      payY -= 14
+      page.drawText(`Amt: ${inr(paidAmount)}`, { x: m + col1W + col2W + 8, y: payY, size: 8, font })
+    } else if (paidAmount > 0) {
+      page.drawText('PARTIAL PAYMENT', { x: m + col1W + col2W + 8, y: payY, size: 9, font: fontBold, color: rgb(0.8, 0.5, 0) })
+      payY -= 14
+      page.drawText(`Paid: ${inr(paidAmount)}`, { x: m + col1W + col2W + 8, y: payY, size: 8, font })
+      payY -= 14
+      page.drawText(`Balance: ${inr(balance)}`, { x: m + col1W + col2W + 8, y: payY, size: 8, font, color: rgb(0.8, 0, 0) })
+    } else {
+      page.drawText('PENDING', { x: m + col1W + col2W + 8, y: payY, size: 9, font: fontBold, color: rgb(0.7, 0, 0) })
+      payY -= 14
+      page.drawText(`Bill Balance: ${inr(total)}`, { x: m + col1W + col2W + 8, y: payY, size: 8, font })
+    }
+
+    // Column 4 - Totals (3-row table)
+    const totalX = m + col1W + col2W + col3W
+    
+    // Row 1 - Subtotal
+    const row1Y = y - 35
+    page.drawRectangle({ x: totalX, y: row1Y, width: col4W, height: 35, borderColor: BLACK, borderWidth: 1, color: LIGHT })
+    page.drawText('SUB TOTAL', { x: totalX + 8, y: row1Y + 20, size: 9, font })
+    const subW = fontBold.widthOfTextAtSize(inr(subtotal), 11)
+    page.drawText(inr(subtotal), { x: totalX + col4W - subW - 8, y: row1Y + 18, size: 11, font: fontBold })
+    
+    // Row 2 - GST
+    const row2Y = row1Y - 35
+    page.drawRectangle({ x: totalX, y: row2Y, width: col4W, height: 35, borderColor: BLACK, borderWidth: 1, color: LIGHT })
+    page.drawText('GST', { x: totalX + 8, y: row2Y + 20, size: 9, font })
+    const gstW = fontBold.widthOfTextAtSize(inr(gstAmt), 11)
+    page.drawText(inr(gstAmt), { x: totalX + col4W - gstW - 8, y: row2Y + 18, size: 11, font: fontBold })
+    
+    // Row 3 - Grand Total
+    const row3Y = row2Y - 40
+    page.drawRectangle({ x: totalX, y: row3Y, width: col4W, height: 40, borderColor: BLACK, borderWidth: 1, color: BLACK })
+    page.drawText('GRAND TOTAL', { x: totalX + 8, y: row3Y + 23, size: 10, font: fontBold, color: WHITE })
+    const totalW = fontBold.widthOfTextAtSize(inr(total), 14)
+    page.drawText(inr(total), { x: totalX + col4W - totalW - 8, y: row3Y + 20, size: 14, font: fontBold, color: WHITE })
+
+    // Footer note
+    const footerNote = firmData.footer_note || 'Thank you for your business!'
+    const noteW = font.widthOfTextAtSize(footerNote, 8)
+    page.drawText(footerNote, { x: (width - noteW) / 2, y: 20, size: 8, font, color: GRAY })
+
+    const pdfBytes = await doc.save()
+
+    return new Response(pdfBytes, {
+      status: 200,
+      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename=invoice.pdf' },
+    })
+  } catch (err) {
+    console.error('PDF error:', err)
+    return Response.json({ error: err.message }, { status: 500 })
   }
+        }
