@@ -1,7 +1,7 @@
 import {
-PDFDocument,
-rgb,
-StandardFonts,
+  PDFDocument,
+  rgb,
+  StandardFonts,
 } from 'pdf-lib'
 
 export const runtime = 'nodejs'
@@ -12,222 +12,204 @@ export const maxDuration = 30
 // ======================================================
 
 const BLACK = rgb(0, 0, 0)
-const WHITE = rgb(1, 1, 1)
 const GRAY = rgb(0.45, 0.45, 0.45)
-const LIGHT = rgb(0.96, 0.96, 0.96)
-
-// ======================================================
-// TYPOGRAPHY
-// ======================================================
-
-const FONT = {
-xs: 7,
-sm: 8,
-md: 10,
-lg: 12,
-xl: 16,
-hero: 22,
-}
 
 // ======================================================
 // HELPERS
 // ======================================================
 
 const inr = (n) =>
-Rs. ${Number(n || 0).toLocaleString(   'en-IN',   {   minimumFractionDigits: 2,   maximumFractionDigits: 2,   }   )}
+  `Rs. ${Number(n || 0).toLocaleString(
+    'en-IN',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }
+  )}`
 
 function parseDate(iso) {
-try {
-return new Date(iso)
-.toLocaleDateString('en-IN', {
-day: '2-digit',
-month: 'short',
-year: 'numeric',
-})
-.toUpperCase()
-} catch {
-return new Date()
-.toLocaleDateString('en-IN')
-.toUpperCase()
-}
+  try {
+    return new Date(iso)
+      .toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+      .toUpperCase()
+  } catch {
+    return new Date()
+      .toLocaleDateString('en-IN')
+      .toUpperCase()
+  }
 }
 
 async function fetchImage(url) {
-if (!url) return null
+  if (!url) return null
 
-try {
-const res = await fetch(url, {
-headers: {
-'User-Agent':
-'Mozilla/5.0',
-},
-})
+  try {
+    const res = await fetch(url)
 
-if (!res.ok) {  
-  return null  
-}  
+    if (!res.ok) return null
 
-return {  
-  bytes:  
-    await res.arrayBuffer(),  
-  type:  
-    res.headers.get(  
-      'content-type'  
-    ) || '',  
-}
+    const contentType =
+      res.headers.get(
+        'content-type'
+      ) || ''
 
-} catch {
-return null
-}
+    const bytes =
+      await res.arrayBuffer()
+
+    return {
+      bytes,
+      contentType,
+    }
+  } catch {
+    return null
+  }
 }
 
 // ======================================================
 // DRAW HELPERS
 // ======================================================
 
-function box(
-page,
-x,
-y,
-w,
-h,
-borderWidth = 1,
-fill = null
-) {
-page.drawRectangle({
-x,
-y,
-width: w,
-height: h,
-borderColor: BLACK,
-borderWidth,
-color: fill || undefined,
-})
-}
-
 function line(
-page,
-x1,
-y1,
-x2,
-y2,
-thickness = 1
+  page,
+  x1,
+  y1,
+  x2,
+  y2,
+  thickness = 1
 ) {
-page.drawLine({
-start: { x: x1, y: y1 },
-end: { x: x2, y: y2 },
-thickness,
-color: BLACK,
-})
+  page.drawLine({
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    thickness,
+    color: BLACK,
+  })
 }
 
-function text(
-page,
-value,
-x,
-y,
-font,
-size = FONT.md,
-color = BLACK
+function box(
+  page,
+  x,
+  y,
+  w,
+  h,
+  thickness = 1
 ) {
-page.drawText(
-String(value || ''),
-{
-x,
-y,
-size,
-font,
-color,
+  page.drawRectangle({
+    x,
+    y,
+    width: w,
+    height: h,
+    borderColor: BLACK,
+    borderWidth: thickness,
+  })
 }
-)
+
+function drawText(
+  page,
+  text,
+  x,
+  y,
+  font,
+  size = 9,
+  color = BLACK
+) {
+  page.drawText(
+    String(text || ''),
+    {
+      x,
+      y,
+      size,
+      font,
+      color,
+    }
+  )
 }
+
+// ======================================================
+// SAFE TEXT
+// ======================================================
 
 function fitText(
-value,
-font,
-size,
-maxWidth
+  text,
+  font,
+  size,
+  maxWidth
 ) {
-let txt = String(value || '')
+  let safe = String(text || '')
 
-while (
-txt.length > 0 &&
-font.widthOfTextAtSize(
-txt,
-size
-) > maxWidth
-) {
-txt = txt.slice(0, -1)
+  while (
+    font.widthOfTextAtSize(
+      safe,
+      size
+    ) > maxWidth
+  ) {
+    safe = safe.slice(0, -1)
+  }
+
+  return safe
 }
 
-return txt
+function drawSafeText(
+  page,
+  text,
+  x,
+  y,
+  width,
+  font,
+  size = 9
+) {
+  const safe = fitText(
+    text,
+    font,
+    size,
+    width
+  )
+
+  page.drawText(safe, {
+    x,
+    y,
+    size,
+    font,
+    color: BLACK,
+  })
 }
 
-function drawCellText(
-page,
-value,
-x,
-y,
-width,
-font,
-size = 9,
-padding = 6,
-color = BLACK
+function drawRightText(
+  page,
+  text,
+  rightX,
+  y,
+  font,
+  size = 9,
+  maxWidth = 120
 ) {
-const safe = fitText(
-value,
-font,
-size,
-width - padding * 2
-)
+  let safe =
+    String(text || '')
 
-text(
-page,
-safe,
-x + padding,
-y,
-font,
-size,
-color
-)
-}
+  while (
+    font.widthOfTextAtSize(
+      safe,
+      size
+    ) > maxWidth
+  ) {
+    safe = safe.slice(0, -1)
+  }
 
-function drawCellRight(
-page,
-value,
-x,
-y,
-width,
-font,
-size = 9,
-padding = 6,
-color = BLACK
-) {
-const safe = fitText(
-value,
-font,
-size,
-width - padding * 2
-)
+  const width =
+    font.widthOfTextAtSize(
+      safe,
+      size
+    )
 
-const tw =
-font.widthOfTextAtSize(
-safe,
-size
-)
-
-text(
-page,
-safe,
-x +
-width -
-tw -
-padding,
-y,
-font,
-size,
-color
-)
+  page.drawText(safe, {
+    x: rightX - width,
+    y,
+    size,
+    font,
+    color: BLACK,
+  })
 }
 
 // ======================================================
@@ -235,894 +217,838 @@ color
 // ======================================================
 
 export async function POST(req) {
-try {
-const {
-memo,
-items = [],
-customer = {},
-firmData = {},
-subtotal = 0,
-gstAmt = 0,
-total = 0,
-qrCodeUrl,
-} = await req.json()
-
-// ==================================================  
-// PDF  
-// ==================================================  
-
-const doc =  
-  await PDFDocument.create()  
-
-const page =  
-  doc.addPage([595, 420])  
-
-const regular =  
-  await doc.embedFont(  
-    StandardFonts.Helvetica  
-  )  
-
-const bold =  
-  await doc.embedFont(  
-    StandardFonts.HelveticaBold  
-  )  
-
-const mono =  
-  await doc.embedFont(  
-    StandardFonts.Courier  
-  )  
-
-const { width, height } =  
-  page.getSize()  
-
-const M = 10  
-
-// ==================================================  
-// MASTER BORDER  
-// ==================================================  
-
-box(  
-  page,  
-  M,  
-  M,  
-  width - M * 2,  
-  height - M * 2,  
-  1.5  
-)  
-
-// ==================================================  
-// HEADER  
-// ==================================================  
-
-const headerH = 95  
-const headerY =  
-  height - M - headerH  
-
-const halfW =  
-  (width - M * 2) / 2  
-
-box(  
-  page,  
-  M,  
-  headerY,  
-  width - M * 2,  
-  headerH  
-)  
-
-line(  
-  page,  
-  M + halfW,  
-  headerY,  
-  M + halfW,  
-  headerY + headerH  
-)  
-
-// ==================================================  
-// LOGO  
-// ==================================================  
-
-if (firmData.logo_url) {  
-  try {  
-    const logo =  
-      await fetchImage(  
-        firmData.logo_url  
-      )  
-
-    if (logo?.bytes) {  
-      let img = null  
-
-      try {  
-        img =  
-          await doc.embedPng(  
-            logo.bytes  
-          )  
-      } catch {  
-        img =  
-          await doc.embedJpg(  
-            logo.bytes  
-          )  
-      }  
-
-      if (img) {  
-        const areaW =  
-          halfW - 10  
-
-        const areaH =  
-          headerH - 10  
-
-        const ratio =  
-          img.width /  
-          img.height  
-
-        let drawW = areaW  
-        let drawH =  
-          drawW / ratio  
-
-        if (  
-          drawH > areaH  
-        ) {  
-          drawH = areaH  
-          drawW =  
-            drawH * ratio  
-        }  
-
-        const lx =  
-          M +  
-          (areaW -  
-            drawW) /  
-            2 +  
-          5  
-
-        const ly =  
-          headerY +  
-          (areaH -  
-            drawH) /  
-            2 +  
-          5  
-
-        page.drawImage(img, {  
-          x: lx,  
-          y: ly,  
-          width: drawW,  
-          height: drawH,  
-        })  
-      }  
-    }  
-  } catch {}  
-}  
-
-// ==================================================  
-// CUSTOMER  
-// ==================================================  
-
-drawCellText(  
-  page,  
-  'Customer Name',  
-  M + halfW + 12,  
-  headerY + 58,  
-  120,  
-  regular,  
-  10,  
-  0,  
-  GRAY  
-)  
-
-text(  
-  page,  
-  ':',  
-  M + halfW + 130,  
-  headerY + 58,  
-  bold,  
-  10  
-)  
-
-drawCellText(  
-  page,  
-  customer.name ||  
-    'Walk-in Customer',  
-  M + halfW + 140,  
-  headerY + 58,  
-  130,  
-  bold,  
-  10  
-)  
-
-drawCellText(  
-  page,  
-  'Mobile No',  
-  M + halfW + 12,  
-  headerY + 30,  
-  120,  
-  regular,  
-  10,  
-  0,  
-  GRAY  
-)  
-
-text(  
-  page,  
-  ':',  
-  M + halfW + 130,  
-  headerY + 30,  
-  bold,  
-  10  
-)  
-
-drawCellText(  
-  page,  
-  customer.phone || '-',  
-  M + halfW + 140,  
-  headerY + 30,  
-  130,  
-  regular,  
-  10  
-)  
-
-// ==================================================  
-// TITLE BAR  
-// ==================================================  
-
-const titleH = 38  
-const titleY =  
-  headerY - titleH  
-
-box(  
-  page,  
-  M,  
-  titleY,  
-  width - M * 2,  
-  titleH,  
-  1,  
-  BLACK  
-)  
-
-const title =  
-  'TAX INVOICE'  
-
-const titleW =  
-  bold.widthOfTextAtSize(  
-    title,  
-    FONT.hero  
-  )  
-
-text(  
-  page,  
-  title,  
-  (width - titleW) / 2,  
-  titleY + 8,  
-  bold,  
-  FONT.hero,  
-  WHITE  
-)  
-
-// ==================================================  
-// META ROW  
-// ==================================================  
-
-const metaH = 30  
-const metaY = titleY - metaH  
-
-box(  
-  page,  
-  M,  
-  metaY,  
-  width - M * 2,  
-  metaH  
-)  
-
-drawCellText(  
-  page,  
-  'Invoice No',  
-  M + 10,  
-  metaY + 9,  
-  100,  
-  regular,  
-  9,  
-  0,  
-  GRAY  
-)  
-
-text(  
-  page,  
-  ':',  
-  M + 90,  
-  metaY + 9,  
-  bold,  
-  9  
-)  
-
-drawCellText(  
-  page,  
-  memo?.id || 'DRAFT',  
-  M + 100,  
-  metaY + 9,  
-  180,  
-  mono,  
-  9  
-)  
-
-drawCellText(  
-  page,  
-  'Date',  
-  width - 170,  
-  metaY + 9,  
-  40,  
-  regular,  
-  9,  
-  0,  
-  GRAY  
-)  
-
-text(  
-  page,  
-  ':',  
-  width - 120,  
-  metaY + 9,  
-  bold,  
-  9  
-)  
-
-drawCellText(  
-  page,  
-  parseDate(  
-    memo?.created_at  
-  ),  
-  width - 110,  
-  metaY + 9,  
-  80,  
-  mono,  
-  9  
-)  
-
-// ==================================================  
-// TABLE  
-// ==================================================  
-
-const tableBottom = 130  
-const tableTop = metaY  
-
-box(  
-  page,  
-  M,  
-  tableBottom,  
-  width - M * 2,  
-  tableTop - tableBottom  
-)  
-
-const th = 28  
-
-box(  
-  page,  
-  M,  
-  tableTop - th,  
-  width - M * 2,  
-  th,  
-  1,  
-  LIGHT  
-)  
-
-// ==================================================  
-// COLUMN SYSTEM  
-// ==================================================  
-
-const TABLE = {  
-  qty: 55,  
-  desc: 265,  
-  hsn: 75,  
-  rate: 85,  
-  amount: 95,  
-}  
-
-const cols = {  
-  qty: M,  
-  desc: M + TABLE.qty,  
-  hsn:  
-    M +  
-    TABLE.qty +  
-    TABLE.desc,  
-  rate:  
-    M +  
-    TABLE.qty +  
-    TABLE.desc +  
-    TABLE.hsn,  
-  amount:  
-    M +  
-    TABLE.qty +  
-    TABLE.desc +  
-    TABLE.hsn +  
-    TABLE.rate,  
-}  
-
-// ==================================================  
-// VERTICALS  
-// ==================================================  
-
-;[  
-  cols.desc,  
-  cols.hsn,  
-  cols.rate,  
-  cols.amount,  
-].forEach((x) => {  
-  line(  
-    page,  
-    x,  
-    tableBottom,  
-    x,  
-    tableTop  
-  )  
-})  
-
-// ==================================================  
-// TABLE HEADERS  
-// ==================================================  
-
-drawCellText(  
-  page,  
-  'QTY',  
-  cols.qty,  
-  tableTop - 18,  
-  TABLE.qty,  
-  bold,  
-  9  
-)  
-
-drawCellText(  
-  page,  
-  'DESCRIPTION',  
-  cols.desc,  
-  tableTop - 18,  
-  TABLE.desc,  
-  bold,  
-  9  
-)  
-
-drawCellText(  
-  page,  
-  'HSN',  
-  cols.hsn,  
-  tableTop - 18,  
-  TABLE.hsn,  
-  bold,  
-  9  
-)  
-
-drawCellText(  
-  page,  
-  'RATE',  
-  cols.rate,  
-  tableTop - 18,  
-  TABLE.rate,  
-  bold,  
-  9  
-)  
-
-drawCellText(  
-  page,  
-  'AMOUNT',  
-  cols.amount,  
-  tableTop - 18,  
-  TABLE.amount,  
-  bold,  
-  9  
-)  
-
-// ==================================================  
-// ITEMS  
-// ==================================================  
-
-let rowY =  
-  tableTop - 50  
-
-items  
-  .slice(0, 7)  
-  .forEach((item) => {  
-    drawCellText(  
-      page,  
-      item.quantity || 0,  
-      cols.qty,  
-      rowY,  
-      TABLE.qty,  
-      regular,  
-      9  
-    )  
-
-    let desc = (  
-      item.name || '-'  
-    ).toUpperCase()  
-
-    if (item.size) {  
-      desc += ` (${item.size})`  
-    }  
-
-    drawCellText(  
-      page,  
-      desc,  
-      cols.desc,  
-      rowY,  
-      TABLE.desc,  
-      regular,  
-      9  
-    )  
-
-    drawCellText(  
-      page,  
-      item.hsn_code ||  
-        '6101',  
-      cols.hsn,  
-      rowY,  
-      TABLE.hsn,  
-      mono,  
-      8,  
-      6,  
-      GRAY  
-    )  
-
-    drawCellRight(  
-      page,  
-      inr(  
-        item.unit_price || 0  
-      ),  
-      cols.rate,  
-      rowY,  
-      TABLE.rate,  
-      mono,  
-      8  
-    )  
-
-    drawCellRight(  
-      page,  
-      inr(  
-        (item.quantity || 0) *  
-          (item.unit_price ||  
-            0)  
-      ),  
-      cols.amount,  
-      rowY,  
-      TABLE.amount,  
-      mono,  
-      8  
-    )  
-
-    rowY -= 25  
-  })  
-
-// ==================================================  
-// FOOTER  
-// ==================================================  
-
-const footerH = 120  
-const footerY = 10  
-
-box(  
-  page,  
-  M,  
-  footerY,  
-  width - M * 2,  
-  footerH  
-)  
-
-const footerCols = {  
-  qr: 130,  
-  gst: 150,  
-  status: 120,  
-}  
-
-const fx1 =  
-  M + footerCols.qr  
-
-const fx2 =  
-  fx1 +  
-  footerCols.gst  
-
-const fx3 =  
-  fx2 +  
-  footerCols.status  
-
-;[fx1, fx2, fx3].forEach(  
-  (x) => {  
-    line(  
-      page,  
-      x,  
-      footerY,  
-      x,  
-      footerY + footerH  
-    )  
-  }  
-)  
-
-// ==================================================  
-// QR  
-// ==================================================  
-
-text(  
-  page,  
-  'PAYMENT QR',  
-  M + 22,  
-  footerY + 95,  
-  bold,  
-  9  
-)  
-
-if (qrCodeUrl) {  
-  try {  
-    const qr =  
-      await fetchImage(  
-        qrCodeUrl  
-      )  
-
-    if (qr?.bytes) {  
-      let img = null  
-
-      try {  
-        img =  
-          await doc.embedPng(  
-            qr.bytes  
-          )  
-      } catch {  
-        try {  
-          img =  
-            await doc.embedJpg(  
-              qr.bytes  
-            )  
-        } catch {}  
-      }  
-
-      if (img) {  
-        const size = 76  
-
-        page.drawImage(img, {  
-          x:  
-            M +  
-            (footerCols.qr -  
-              size) /  
-              2,  
-          y:  
-            footerY + 20,  
-          width: size,  
-          height: size,  
-        })  
-      } else {  
-        text(  
-          page,  
-          'INVALID QR',  
-          M + 25,  
-          footerY + 55,  
-          regular,  
-          8,  
-          GRAY  
-        )  
-      }  
-    }  
-  } catch {}  
-}  
-
-// ==================================================  
-// GST BREAKDOWN  
-// ==================================================  
-
-text(  
-  page,  
-  'GST BREAKDOWN',  
-  fx1 + 15,  
-  footerY + 95,  
-  bold,  
-  9  
-)  
-
-const gstRows = [  
-  [  
-    'CGST (9%)',  
-    inr(gstAmt / 2),  
-  ],  
-  [  
-    'SGST (9%)',  
-    inr(gstAmt / 2),  
-  ],  
-  ['IGST', 'Rs. 0.00'],  
-]  
-
-let gy =  
-  footerY + 68  
-
-gstRows.forEach(([k, v]) => {  
-  drawCellText(  
-    page,  
-    k,  
-    fx1,  
-    gy,  
-    footerCols.gst,  
-    regular,  
-    8  
-  )  
-
-  drawCellRight(  
-    page,  
-    v,  
-    fx1,  
-    gy,  
-    footerCols.gst,  
-    mono,  
-    8  
-  )  
-
-  gy -= 24  
-})  
-
-// ==================================================  
-// PAYMENT STATUS  
-// ==================================================  
-
-text(  
-  page,  
-  'PAYMENT STATUS',  
-  fx2 + 15,  
-  footerY + 95,  
-  bold,  
-  9  
-)  
-
-const statusRows = [  
-  'Cash Paid',  
-  'UPI Paid',  
-  'Bill Balance',  
-]  
-
-let sy =  
-  footerY + 68  
-
-statusRows.forEach((s) => {  
-  drawCellText(  
-    page,  
-    s,  
-    fx2,  
-    sy,  
-    footerCols.status,  
-    regular,  
-    8  
-  )  
-
-  sy -= 24  
-})  
-
-// ==================================================  
-// TOTALS  
-// ==================================================  
-
-const totalX = fx3  
-const totalW =  
-  width - M - totalX  
-
-const split =  
-  totalX +  
-  totalW * 0.42  
-
-line(  
-  page,  
-  totalX,  
-  footerY + 80,  
-  width - M,  
-  footerY + 80  
-)  
-
-line(  
-  page,  
-  totalX,  
-  footerY + 40,  
-  width - M,  
-  footerY + 40  
-)  
-
-line(  
-  page,  
-  split,  
-  footerY,  
-  split,  
-  footerY + footerH  
-)  
-
-const totals = [  
-  [  
-    'SUB TOTAL',  
-    inr(subtotal),  
-    footerY + 90,  
-    10,  
-  ],  
-  [  
-    'GST TOTAL',  
-    inr(gstAmt),  
-    footerY + 50,  
-    10,  
-  ],  
-  [  
-    'GRAND TOTAL',  
-    inr(total),  
-    footerY + 12,  
-    11,  
-  ],  
-]  
-
-totals.forEach(  
-  ([label, value, ty, fs]) => {  
-    drawCellText(  
-      page,  
-      label,  
-      totalX,  
-      ty,  
-      split - totalX,  
-      bold,  
-      fs  
-    )  
-
-    drawCellRight(  
-      page,  
-      value,  
-      split,  
-      ty,  
-      width -  
-        M -  
-        split,  
-      mono,  
-      fs - 1  
-    )  
-  }  
-)  
-
-// ==================================================  
-// FOOTER NOTE  
-// ==================================================  
-
-const note =  
-  firmData.footer_note ||  
-  'Thank you for your business'  
-
-const nw =  
-  regular.widthOfTextAtSize(  
-    note,  
-    7  
-  )  
-
-text(  
-  page,  
-  note,  
-  (width - nw) / 2,  
-  4,  
-  regular,  
-  7,  
-  GRAY  
-)  
-
-// ==================================================  
-// SAVE  
-// ==================================================  
-
-const pdfBytes =  
-  await doc.save({  
-    useObjectStreams: true,  
-  })  
-
-return new Response(pdfBytes, {  
-  status: 200,  
-  headers: {  
-    'Content-Type':  
-      'application/pdf',  
-    'Content-Disposition':  
-      'inline; filename=invoice.pdf',  
-  },  
-})
-
-} catch (err) {
-console.error(err)
-
-return Response.json(  
-  {  
-    error:  
-      err.message ||  
-      'PDF generation failed',  
-  },  
-  {  
-    status: 500,  
-  }  
-)
-
-}
+  try {
+    const {
+      memo,
+      items = [],
+      customer = {},
+      firmData = {},
+      subtotal = 0,
+      gstAmt = 0,
+      total = 0,
+      qrCodeUrl,
+    } = await req.json()
+
+    // ==================================================
+    // PDF
+    // ==================================================
+
+    const doc =
+      await PDFDocument.create()
+
+    const page = doc.addPage([
+      595,
+      420,
+    ])
+
+    const regular =
+      await doc.embedFont(
+        StandardFonts.Helvetica
+      )
+
+    const bold =
+      await doc.embedFont(
+        StandardFonts.HelveticaBold
+      )
+
+    const mono =
+      await doc.embedFont(
+        StandardFonts.Courier
+      )
+
+    const { width, height } =
+      page.getSize()
+
+    const M = 10
+
+    // ==================================================
+    // MASTER BORDER
+    // ==================================================
+
+    box(
+      page,
+      M,
+      M,
+      width - M * 2,
+      height - M * 2,
+      1.5
+    )
+
+    // ==================================================
+    // HEADER
+    // ==================================================
+
+    const headerH = 100
+    const headerY =
+      height - M - headerH
+
+    box(
+      page,
+      M,
+      headerY,
+      width - M * 2,
+      headerH,
+      1
+    )
+
+    const midX = width / 2
+
+    line(
+      page,
+      midX,
+      headerY,
+      midX,
+      headerY + headerH,
+      1
+    )
+
+    // ==================================================
+    // LOGO
+    // ==================================================
+
+    if (firmData.logo_url) {
+      const logo =
+        await fetchImage(
+          firmData.logo_url
+        )
+
+      if (logo) {
+        try {
+          const img =
+            logo.contentType.includes(
+              'png'
+            )
+              ? await doc.embedPng(
+                  logo.bytes
+                )
+              : await doc.embedJpg(
+                  logo.bytes
+                )
+
+          page.drawImage(img, {
+            x: M + 2,
+            y: headerY + 2,
+            width:
+              midX - M - 4,
+            height:
+              headerH - 4,
+          })
+        } catch {}
+      }
+    }
+
+    // ==================================================
+    // CUSTOMER DETAILS
+    // ==================================================
+
+    drawText(
+      page,
+      'Customer Name',
+      midX + 20,
+      headerY + 45,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      ':',
+      midX + 145,
+      headerY + 45,
+      bold,
+      10
+    )
+
+    drawSafeText(
+      page,
+      customer.name ||
+        'Walk-in Customer',
+      midX + 160,
+      headerY + 45,
+      110,
+      regular,
+      10
+    )
+
+    drawText(
+      page,
+      'Mobile No',
+      midX + 20,
+      headerY + 18,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      ':',
+      midX + 145,
+      headerY + 18,
+      bold,
+      10
+    )
+
+    drawSafeText(
+      page,
+      customer.phone || '-',
+      midX + 160,
+      headerY + 18,
+      110,
+      regular,
+      10
+    )
+
+    // ==================================================
+    // TITLE ROW
+    // ==================================================
+
+    const titleH = 40
+    const titleY =
+      headerY - titleH
+
+    box(
+      page,
+      M,
+      titleY,
+      width - M * 2,
+      titleH,
+      1
+    )
+
+    drawText(
+      page,
+      'TAX INVOICE',
+      width / 2 - 72,
+      titleY + 10,
+      bold,
+      24
+    )
+
+    // ==================================================
+    // META ROW
+    // ==================================================
+
+    const metaH = 32
+    const metaY = titleY - metaH
+
+    box(
+      page,
+      M,
+      metaY,
+      width - M * 2,
+      metaH,
+      1
+    )
+
+    drawText(
+      page,
+      'Invoice No',
+      M + 20,
+      metaY + 10,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      ':',
+      M + 110,
+      metaY + 10,
+      bold,
+      10
+    )
+
+    drawSafeText(
+      page,
+      memo?.id || 'DRAFT',
+      M + 125,
+      metaY + 10,
+      180,
+      mono,
+      10
+    )
+
+    drawText(
+      page,
+      'Date',
+      width - 170,
+      metaY + 10,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      ':',
+      width - 115,
+      metaY + 10,
+      bold,
+      10
+    )
+
+    drawSafeText(
+      page,
+      parseDate(
+        memo?.created_at
+      ),
+      width - 100,
+      metaY + 10,
+      75,
+      mono,
+      10
+    )
+
+    // ==================================================
+    // PRODUCT TABLE
+    // ==================================================
+
+    const tableY = 130
+    const tableH =
+      metaY - tableY
+
+    box(
+      page,
+      M,
+      tableY,
+      width - M * 2,
+      tableH,
+      1
+    )
+
+    // ==================================================
+    // TABLE HEADER
+    // ==================================================
+
+    const th = 30
+
+    line(
+      page,
+      M,
+      metaY - th,
+      width - M,
+      metaY - th,
+      1
+    )
+
+    // ==================================================
+    // COLUMNS
+    // ==================================================
+
+    const c1 = M + 55
+    const c2 = M + 340
+    const c3 = M + 420
+    const c4 = M + 495
+
+    // ==================================================
+    // VERTICAL LINES
+    // ==================================================
+
+    ;[c1, c2, c3, c4].forEach(
+      (x) => {
+        line(
+          page,
+          x,
+          tableY,
+          x,
+          metaY,
+          1
+        )
+      }
+    )
+
+    // ==================================================
+    // TABLE HEADERS
+    // ==================================================
+
+    drawText(
+      page,
+      'QTY',
+      M + 15,
+      metaY - 20,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      'DESCRIPTION',
+      c1 + 10,
+      metaY - 20,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      'HSN',
+      c2 + 10,
+      metaY - 20,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      'RATE',
+      c3 + 10,
+      metaY - 20,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      'AMOUNT',
+      c4 + 10,
+      metaY - 20,
+      bold,
+      10
+    )
+
+    // ==================================================
+    // ITEMS
+    // ==================================================
+
+    let y = metaY - 55
+
+    items
+      .slice(0, 7)
+      .forEach((item) => {
+        drawText(
+          page,
+          item.quantity || 0,
+          M + 18,
+          y,
+          regular,
+          10
+        )
+
+        let desc = (
+          item.name || '-'
+        ).toUpperCase()
+
+        if (item.size) {
+          desc += ` (${item.size})`
+        }
+
+        desc = desc.slice(0, 34)
+
+        drawSafeText(
+          page,
+          desc,
+          c1 + 10,
+          y,
+          250,
+          regular,
+          10
+        )
+
+        drawSafeText(
+          page,
+          item.hsn_code ||
+            '6101',
+          c2 + 10,
+          y,
+          55,
+          mono,
+          9
+        )
+
+        drawRightText(
+          page,
+          inr(
+            item.unit_price || 0
+          ),
+          c4 - 12,
+          y,
+          mono,
+          9,
+          65
+        )
+
+        drawRightText(
+          page,
+          inr(
+            (item.quantity ||
+              0) *
+              (item.unit_price ||
+                0)
+          ),
+          width - 18,
+          y,
+          mono,
+          9,
+          78
+        )
+
+        y -= 28
+      })
+
+    // ==================================================
+    // FOOTER
+    // ==================================================
+
+    const footerH = 120
+    const footerY = 10
+
+    box(
+      page,
+      M,
+      footerY,
+      width - M * 2,
+      footerH,
+      1
+    )
+
+    // ==================================================
+    // FOOTER COLUMNS
+    // ==================================================
+
+    const f1 = M + 140
+    const f2 = M + 290
+    const f3 = M + 410
+
+    ;[f1, f2, f3].forEach(
+      (x) => {
+        line(
+          page,
+          x,
+          footerY,
+          x,
+          footerY +
+            footerH,
+          1
+        )
+      }
+    )
+
+    // ==================================================
+    // QR SECTION
+    // ==================================================
+
+    drawText(
+      page,
+      'PAYMENT QR',
+      M + 28,
+      footerY + 95,
+      bold,
+      10
+    )
+
+    if (qrCodeUrl) {
+      const qr =
+        await fetchImage(
+          qrCodeUrl
+        )
+
+      if (qr) {
+        try {
+          const img =
+            qr.contentType.includes(
+              'png'
+            )
+              ? await doc.embedPng(
+                  qr.bytes
+                )
+              : await doc.embedJpg(
+                  qr.bytes
+                )
+
+          page.drawImage(img, {
+            x: M + 20,
+            y: footerY + 18,
+            width: 90,
+            height: 90,
+          })
+        } catch (err) {
+          console.error(
+            'QR ERROR',
+            err
+          )
+        }
+      }
+    }
+
+    // ==================================================
+    // GST BREAKDOWN
+    // ==================================================
+
+    drawText(
+      page,
+      'GST BREAKDOWN',
+      f1 + 18,
+      footerY + 95,
+      bold,
+      10
+    )
+
+    drawText(
+      page,
+      'CGST (9%)',
+      f1 + 18,
+      footerY + 70,
+      regular,
+      9
+    )
+
+    drawRightText(
+      page,
+      inr(gstAmt / 2),
+      f2 - 15,
+      footerY + 70,
+      mono,
+      9,
+      75
+    )
+
+    drawText(
+      page,
+      'SGST (9%)',
+      f1 + 18,
+      footerY + 45,
+      regular,
+      9
+    )
+
+    drawRightText(
+      page,
+      inr(gstAmt / 2),
+      f2 - 15,
+      footerY + 45,
+      mono,
+      9,
+      75
+    )
+
+    drawText(
+      page,
+      'IGST',
+      f1 + 18,
+      footerY + 20,
+      regular,
+      9
+    )
+
+    drawRightText(
+      page,
+      'Rs. 0.00',
+      f2 - 15,
+      footerY + 20,
+      mono,
+      9,
+      75
+    )
+
+    // ==================================================
+    // PAYMENT STATUS
+    // ==================================================
+
+    drawText(
+      page,
+      'PAYMENT STATUS',
+      f2 + 18,
+      footerY + 95,
+      bold,
+      10
+    )
+
+    drawSafeText(
+      page,
+      'Cash Paid',
+      f2 + 18,
+      footerY + 65,
+      90,
+      regular,
+      9
+    )
+
+    drawSafeText(
+      page,
+      'UPI Paid',
+      f2 + 18,
+      footerY + 40,
+      90,
+      regular,
+      9
+    )
+
+    drawSafeText(
+      page,
+      'Bill Balance',
+      f2 + 18,
+      footerY + 15,
+      90,
+      regular,
+      9
+    )
+
+    // ==================================================
+    // TOTAL TABLE
+    // ==================================================
+
+    const totalX = f3
+
+    line(
+      page,
+      totalX,
+      footerY + 80,
+      width - M,
+      footerY + 80,
+      1
+    )
+
+    line(
+      page,
+      totalX,
+      footerY + 40,
+      width - M,
+      footerY + 40,
+      1
+    )
+
+    // VERTICAL SPLIT
+
+    const splitX =
+      totalX + 95
+
+    line(
+      page,
+      splitX,
+      footerY,
+      splitX,
+      footerY + footerH,
+      1
+    )
+
+    // ==================================================
+    // SUB TOTAL
+    // ==================================================
+
+    drawSafeText(
+      page,
+      'SUB TOTAL',
+      totalX + 10,
+      footerY + 90,
+      80,
+      bold,
+      10
+    )
+
+    drawRightText(
+      page,
+      inr(subtotal),
+      width - 18,
+      footerY + 90,
+      mono,
+      10,
+      70
+    )
+
+    // ==================================================
+    // GST TOTAL
+    // ==================================================
+
+    drawSafeText(
+      page,
+      'GST TOTAL',
+      totalX + 10,
+      footerY + 50,
+      80,
+      bold,
+      10
+    )
+
+    drawRightText(
+      page,
+      inr(gstAmt),
+      width - 18,
+      footerY + 50,
+      mono,
+      10,
+      70
+    )
+
+    // ==================================================
+    // GRAND TOTAL
+    // ==================================================
+
+    drawSafeText(
+      page,
+      'GRAND TOTAL',
+      totalX + 10,
+      footerY + 12,
+      80,
+      bold,
+      11
+    )
+
+    drawRightText(
+      page,
+      inr(total),
+      width - 18,
+      footerY + 12,
+      mono,
+      11,
+      82
+    )
+
+    // ==================================================
+    // FOOTER NOTE
+    // ==================================================
+
+    if (firmData.footer_note) {
+      const note =
+        fitText(
+          firmData.footer_note,
+          regular,
+          7,
+          260
+        )
+
+      drawText(
+        page,
+        note,
+        width / 2 - 100,
+        4,
+        regular,
+        7,
+        GRAY
+      )
+    }
+
+    // ==================================================
+    // SAVE PDF
+    // ==================================================
+
+    const pdfBytes =
+      await doc.save({
+        useObjectStreams: true,
+      })
+
+    return new Response(
+      pdfBytes,
+      {
+        status: 200,
+        headers: {
+          'Content-Type':
+            'application/pdf',
+          'Content-Disposition':
+            'inline; filename=invoice.pdf',
+        },
+      }
+    )
+  } catch (err) {
+    console.error(err)
+
+    return Response.json(
+      {
+        error:
+          err.message ||
+          'PDF generation failed',
+      },
+      {
+        status: 500,
+      }
+    )
   }
+      }
