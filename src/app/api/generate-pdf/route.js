@@ -12,7 +12,47 @@ export const maxDuration = 30
 // ======================================================
 
 const BLACK = rgb(0, 0, 0)
+const WHITE = rgb(1, 1, 1)
 const GRAY = rgb(0.45, 0.45, 0.45)
+const LIGHT = rgb(0.97, 0.97, 0.97)
+const LIGHTER = rgb(0.985, 0.985, 0.985)
+
+// ======================================================
+// PAGE
+// ======================================================
+
+const PAGE = {
+  width: 595,
+  height: 842,
+  margin: 24,
+}
+
+// ======================================================
+// FONT
+// ======================================================
+
+const FONT = {
+  xs: 7,
+  sm: 8,
+  md: 10,
+  lg: 12,
+  xl: 16,
+  hero: 22,
+}
+
+// ======================================================
+// TABLE
+// ======================================================
+
+const TABLE = {
+  qty: 55,
+  desc: 250,
+  hsn: 70,
+  rate: 95,
+  amount: 101,
+}
+
+const ROW_MIN_HEIGHT = 34
 
 // ======================================================
 // HELPERS
@@ -43,6 +83,100 @@ function parseDate(iso) {
   }
 }
 
+function numberToWords(num) {
+  if (!num)
+    return 'ZERO RUPEES ONLY'
+
+  const a = [
+    '',
+    'ONE',
+    'TWO',
+    'THREE',
+    'FOUR',
+    'FIVE',
+    'SIX',
+    'SEVEN',
+    'EIGHT',
+    'NINE',
+    'TEN',
+    'ELEVEN',
+    'TWELVE',
+    'THIRTEEN',
+    'FOURTEEN',
+    'FIFTEEN',
+    'SIXTEEN',
+    'SEVENTEEN',
+    'EIGHTEEN',
+    'NINETEEN',
+  ]
+
+  const b = [
+    '',
+    '',
+    'TWENTY',
+    'THIRTY',
+    'FORTY',
+    'FIFTY',
+    'SIXTY',
+    'SEVENTY',
+    'EIGHTY',
+    'NINETY',
+  ]
+
+  function convert(n) {
+    if (n < 20) return a[n]
+
+    if (n < 100) {
+      return (
+        b[Math.floor(n / 10)] +
+        (n % 10
+          ? ' ' + a[n % 10]
+          : '')
+      )
+    }
+
+    if (n < 1000) {
+      return (
+        a[Math.floor(n / 100)] +
+        ' HUNDRED ' +
+        convert(n % 100)
+      )
+    }
+
+    if (n < 100000) {
+      return (
+        convert(
+          Math.floor(n / 1000)
+        ) +
+        ' THOUSAND ' +
+        convert(n % 1000)
+      )
+    }
+
+    if (n < 10000000) {
+      return (
+        convert(
+          Math.floor(n / 100000)
+        ) +
+        ' LAKH ' +
+        convert(n % 100000)
+      )
+    }
+
+    return (
+      convert(
+        Math.floor(n / 10000000)
+      ) +
+      ' CRORE ' +
+      convert(n % 10000000)
+    )
+  }
+
+  return `${convert(
+    Math.floor(num)
+  )} RUPEES ONLY`
+}
+
 async function fetchImage(url) {
   if (!url) return null
 
@@ -51,17 +185,13 @@ async function fetchImage(url) {
 
     if (!res.ok) return null
 
-    const contentType =
-      res.headers.get(
-        'content-type'
-      ) || ''
-
-    const bytes =
-      await res.arrayBuffer()
-
     return {
-      bytes,
-      contentType,
+      bytes:
+        await res.arrayBuffer(),
+      type:
+        res.headers.get(
+          'content-type'
+        ) || '',
     }
   } catch {
     return null
@@ -71,6 +201,26 @@ async function fetchImage(url) {
 // ======================================================
 // DRAW HELPERS
 // ======================================================
+
+function box(
+  page,
+  x,
+  y,
+  w,
+  h,
+  borderWidth = 1,
+  fill = null
+) {
+  page.drawRectangle({
+    x,
+    y,
+    width: w,
+    height: h,
+    borderColor: BLACK,
+    borderWidth,
+    color: fill || undefined,
+  })
+}
 
 function line(
   page,
@@ -88,35 +238,17 @@ function line(
   })
 }
 
-function box(
+function text(
   page,
-  x,
-  y,
-  w,
-  h,
-  thickness = 1
-) {
-  page.drawRectangle({
-    x,
-    y,
-    width: w,
-    height: h,
-    borderColor: BLACK,
-    borderWidth: thickness,
-  })
-}
-
-function drawText(
-  page,
-  text,
+  value,
   x,
   y,
   font,
-  size = 9,
+  size = FONT.md,
   color = BLACK
 ) {
   page.drawText(
-    String(text || ''),
+    String(value || ''),
     {
       x,
       y,
@@ -127,89 +259,267 @@ function drawText(
   )
 }
 
-// ======================================================
-// SAFE TEXT
-// ======================================================
-
-function fitText(
-  text,
+function wrapText(
+  value,
   font,
   size,
   maxWidth
 ) {
-  let safe = String(text || '')
+  const words = String(
+    value || ''
+  ).split(' ')
 
-  while (
-    font.widthOfTextAtSize(
-      safe,
-      size
-    ) > maxWidth
-  ) {
-    safe = safe.slice(0, -1)
+  const lines = []
+
+  let current = ''
+
+  for (const word of words) {
+    const test =
+      current + word + ' '
+
+    const width =
+      font.widthOfTextAtSize(
+        test,
+        size
+      )
+
+    if (
+      width > maxWidth &&
+      current
+    ) {
+      lines.push(
+        current.trim()
+      )
+
+      current = word + ' '
+    } else {
+      current = test
+    }
   }
 
-  return safe
+  if (current) {
+    lines.push(current.trim())
+  }
+
+  return lines
 }
 
-function drawSafeText(
+function drawWrappedText(
   page,
-  text,
+  value,
   x,
   y,
   width,
   font,
-  size = 9
+  size = 9,
+  lineGap = 11,
+  maxLines = 10,
+  color = BLACK
 ) {
-  const safe = fitText(
-    text,
+  const lines = wrapText(
+    value,
     font,
     size,
     width
-  )
+  ).slice(0, maxLines)
 
-  page.drawText(safe, {
-    x,
-    y,
-    size,
-    font,
-    color: BLACK,
+  lines.forEach((lineText, i) => {
+    text(
+      page,
+      lineText,
+      x,
+      y - i * lineGap,
+      font,
+      size,
+      color
+    )
   })
+
+  return lines.length
 }
 
-function drawRightText(
+function drawRight(
   page,
-  text,
-  rightX,
+  value,
+  x,
   y,
+  width,
   font,
   size = 9,
-  maxWidth = 120
+  padding = 6
 ) {
-  let safe =
-    String(text || '')
-
-  while (
+  const tw =
     font.widthOfTextAtSize(
-      safe,
-      size
-    ) > maxWidth
-  ) {
-    safe = safe.slice(0, -1)
-  }
-
-  const width =
-    font.widthOfTextAtSize(
-      safe,
+      String(value),
       size
     )
 
-  page.drawText(safe, {
-    x: rightX - width,
+  text(
+    page,
+    value,
+    x +
+      width -
+      tw -
+      padding,
     y,
-    size,
     font,
-    color: BLACK,
+    size
+  )
+}
+
+function getRowHeight(
+  item,
+  font
+) {
+  let desc = (
+    item.name || '-'
+  ).toUpperCase()
+
+  if (item.size) {
+    desc += ` (${item.size})`
+  }
+
+  const lines = wrapText(
+    desc,
+    font,
+    8,
+    TABLE.desc - 20
+  )
+
+  return Math.max(
+    ROW_MIN_HEIGHT,
+    lines.length * 12 + 14
+  )
+}
+
+// ======================================================
+// PAGE HELPERS
+// ======================================================
+
+function createPage(doc) {
+  return doc.addPage([
+    PAGE.width,
+    PAGE.height,
+  ])
+}
+
+function drawMasterBorder(
+  page
+) {
+  box(
+    page,
+    PAGE.margin,
+    PAGE.margin,
+    PAGE.width -
+      PAGE.margin * 2,
+    PAGE.height -
+      PAGE.margin * 2,
+    1.5
+  )
+}
+
+// ======================================================
+// TABLE HEADER
+// ======================================================
+
+function drawTableHeader(
+  page,
+  topY,
+  bold
+) {
+  const M = PAGE.margin
+
+  const cols = {
+    qty: M,
+    desc: M + TABLE.qty,
+    hsn:
+      M +
+      TABLE.qty +
+      TABLE.desc,
+    rate:
+      M +
+      TABLE.qty +
+      TABLE.desc +
+      TABLE.hsn,
+    amount:
+      M +
+      TABLE.qty +
+      TABLE.desc +
+      TABLE.hsn +
+      TABLE.rate,
+  }
+
+  box(
+    page,
+    M,
+    topY - 28,
+    PAGE.width - M * 2,
+    28,
+    1,
+    LIGHT
+  )
+
+  ;[
+    cols.desc,
+    cols.hsn,
+    cols.rate,
+    cols.amount,
+  ].forEach((x) => {
+    line(
+      page,
+      x,
+      PAGE.margin + 170,
+      x,
+      topY
+    )
   })
+
+  text(
+    page,
+    'QTY',
+    cols.qty + 10,
+    topY - 18,
+    bold,
+    9
+  )
+
+  text(
+    page,
+    'DESCRIPTION',
+    cols.desc + 10,
+    topY - 18,
+    bold,
+    9
+  )
+
+  text(
+    page,
+    'HSN',
+    cols.hsn + 10,
+    topY - 18,
+    bold,
+    9
+  )
+
+  text(
+    page,
+    'RATE',
+    cols.rate + 10,
+    topY - 18,
+    bold,
+    9
+  )
+
+  text(
+    page,
+    'AMOUNT',
+    cols.amount + 10,
+    topY - 18,
+    bold,
+    9
+  )
+
+  return cols
 }
 
 // ======================================================
@@ -229,17 +539,8 @@ export async function POST(req) {
       qrCodeUrl,
     } = await req.json()
 
-    // ==================================================
-    // PDF
-    // ==================================================
-
     const doc =
       await PDFDocument.create()
-
-    const page = doc.addPage([
-      595,
-      420,
-    ])
 
     const regular =
       await doc.embedFont(
@@ -256,799 +557,739 @@ export async function POST(req) {
         StandardFonts.Courier
       )
 
-    const { width, height } =
-      page.getSize()
+    let page =
+      createPage(doc)
 
-    const M = 10
+    drawMasterBorder(page)
 
-    // ==================================================
-    // MASTER BORDER
-    // ==================================================
+    const M = PAGE.margin
 
-    box(
-      page,
-      M,
-      M,
-      width - M * 2,
-      height - M * 2,
-      1.5
-    )
-
-    // ==================================================
+    // ======================================================
     // HEADER
-    // ==================================================
+    // ======================================================
 
-    const headerH = 100
+    const headerH = 110
+
     const headerY =
-      height - M - headerH
+      PAGE.height -
+      M -
+      headerH
 
     box(
       page,
       M,
       headerY,
-      width - M * 2,
-      headerH,
-      1
+      PAGE.width - M * 2,
+      headerH
     )
 
-    const midX = width / 2
+    const leftW = 220
 
     line(
       page,
-      midX,
+      M + leftW,
       headerY,
-      midX,
-      headerY + headerH,
-      1
+      M + leftW,
+      headerY + headerH
     )
 
-    // ==================================================
+    // ======================================================
     // LOGO
-    // ==================================================
+    // ======================================================
 
     if (firmData.logo_url) {
-      const logo =
-        await fetchImage(
-          firmData.logo_url
-        )
+      try {
+        const logo =
+          await fetchImage(
+            firmData.logo_url
+          )
 
-      if (logo) {
-        try {
-          const img =
-            logo.contentType.includes(
+        if (logo?.bytes) {
+          let img = null
+
+          if (
+            logo.type.includes(
               'png'
             )
-              ? await doc.embedPng(
-                  logo.bytes
-                )
-              : await doc.embedJpg(
-                  logo.bytes
-                )
+          ) {
+            img =
+              await doc.embedPng(
+                logo.bytes
+              )
+          } else {
+            img =
+              await doc.embedJpg(
+                logo.bytes
+              )
+          }
 
-          page.drawImage(img, {
-            x: M + 2,
-            y: headerY + 2,
-            width:
-              midX - M - 4,
-            height:
-              headerH - 4,
-          })
-        } catch {}
-      }
+          if (img) {
+            const ratio =
+              img.width /
+              img.height
+
+            let drawW = 150
+
+            let drawH =
+              drawW / ratio
+
+            if (drawH > 80) {
+              drawH = 80
+              drawW =
+                drawH * ratio
+            }
+
+            page.drawImage(img, {
+              x:
+                M +
+                (leftW -
+                  drawW) /
+                  2,
+              y:
+                headerY + 15,
+              width: drawW,
+              height: drawH,
+            })
+          }
+        }
+      } catch {}
     }
 
-    // ==================================================
-    // CUSTOMER DETAILS
-    // ==================================================
+    // ======================================================
+    // COMPANY
+    // ======================================================
 
-    drawText(
+    const cx = M + leftW + 15
+
+    text(
       page,
-      'Customer Name',
-      midX + 20,
-      headerY + 45,
+      (
+        firmData.name ||
+        'YOUR COMPANY'
+      ).toUpperCase(),
+      cx,
+      headerY + 82,
       bold,
-      10
+      16
     )
 
-    drawText(
+    drawWrappedText(
       page,
-      ':',
-      midX + 145,
-      headerY + 45,
-      bold,
-      10
-    )
-
-    drawSafeText(
-      page,
-      customer.name ||
-        'Walk-in Customer',
-      midX + 160,
-      headerY + 45,
-      110,
+      firmData.address ||
+        'Company Address',
+      cx,
+      headerY + 62,
+      300,
       regular,
-      10
+      9,
+      11,
+      3,
+      GRAY
     )
 
-    drawText(
+    text(
       page,
-      'Mobile No',
-      midX + 20,
-      headerY + 18,
-      bold,
-      10
-    )
-
-    drawText(
-      page,
-      ':',
-      midX + 145,
-      headerY + 18,
-      bold,
-      10
-    )
-
-    drawSafeText(
-      page,
-      customer.phone || '-',
-      midX + 160,
-      headerY + 18,
-      110,
+      `GSTIN : ${
+        firmData.gstin || '-'
+      }`,
+      cx,
+      headerY + 26,
       regular,
-      10
+      9
     )
 
-    // ==================================================
-    // TITLE ROW
-    // ==================================================
+    text(
+      page,
+      `PHONE : ${
+        firmData.phone || '-'
+      }`,
+      cx + 170,
+      headerY + 26,
+      regular,
+      9
+    )
 
-    const titleH = 40
+    // ======================================================
+    // TITLE
+    // ======================================================
+
     const titleY =
-      headerY - titleH
+      headerY - 42
 
     box(
       page,
       M,
       titleY,
-      width - M * 2,
-      titleH,
-      1
+      PAGE.width - M * 2,
+      36,
+      1,
+      BLACK
     )
 
-    drawText(
+    const title =
+      'TAX INVOICE'
+
+    const tw =
+      bold.widthOfTextAtSize(
+        title,
+        FONT.hero
+      )
+
+    text(
       page,
-      'TAX INVOICE',
-      width / 2 - 72,
-      titleY + 10,
+      title,
+      (PAGE.width - tw) / 2,
+      titleY + 8,
       bold,
-      24
+      FONT.hero,
+      WHITE
     )
 
-    // ==================================================
-    // META ROW
-    // ==================================================
+    // ======================================================
+    // CUSTOMER
+    // ======================================================
 
-    const metaH = 32
-    const metaY = titleY - metaH
+    const customerY =
+      titleY - 72
 
     box(
       page,
       M,
-      metaY,
-      width - M * 2,
-      metaH,
-      1
+      customerY,
+      PAGE.width - M * 2,
+      62
     )
-
-    drawText(
-      page,
-      'Invoice No',
-      M + 20,
-      metaY + 10,
-      bold,
-      10
-    )
-
-    drawText(
-      page,
-      ':',
-      M + 110,
-      metaY + 10,
-      bold,
-      10
-    )
-
-    drawSafeText(
-      page,
-      memo?.id || 'DRAFT',
-      M + 125,
-      metaY + 10,
-      180,
-      mono,
-      10
-    )
-
-    drawText(
-      page,
-      'Date',
-      width - 170,
-      metaY + 10,
-      bold,
-      10
-    )
-
-    drawText(
-      page,
-      ':',
-      width - 115,
-      metaY + 10,
-      bold,
-      10
-    )
-
-    drawSafeText(
-      page,
-      parseDate(
-        memo?.created_at
-      ),
-      width - 100,
-      metaY + 10,
-      75,
-      mono,
-      10
-    )
-
-    // ==================================================
-    // PRODUCT TABLE
-    // ==================================================
-
-    const tableY = 130
-    const tableH =
-      metaY - tableY
-
-    box(
-      page,
-      M,
-      tableY,
-      width - M * 2,
-      tableH,
-      1
-    )
-
-    // ==================================================
-    // TABLE HEADER
-    // ==================================================
-
-    const th = 30
 
     line(
       page,
-      M,
-      metaY - th,
-      width - M,
-      metaY - th,
-      1
+      PAGE.width / 2,
+      customerY,
+      PAGE.width / 2,
+      customerY + 62
     )
 
-    // ==================================================
-    // COLUMNS
-    // ==================================================
-
-    const c1 = M + 55
-    const c2 = M + 340
-    const c3 = M + 420
-    const c4 = M + 495
-
-    // ==================================================
-    // VERTICAL LINES
-    // ==================================================
-
-    ;[c1, c2, c3, c4].forEach(
-      (x) => {
-        line(
-          page,
-          x,
-          tableY,
-          x,
-          metaY,
-          1
-        )
-      }
-    )
-
-    // ==================================================
-    // TABLE HEADERS
-    // ==================================================
-
-    drawText(
+    text(
       page,
-      'QTY',
-      M + 15,
-      metaY - 20,
+      'BILL TO',
+      M + 10,
+      customerY + 42,
       bold,
       10
     )
 
-    drawText(
+    drawWrappedText(
       page,
-      'DESCRIPTION',
-      c1 + 10,
-      metaY - 20,
+      customer.name ||
+        'Walk-in Customer',
+      M + 10,
+      customerY + 25,
+      240,
       bold,
-      10
+      11
     )
 
-    drawText(
+    text(
       page,
-      'HSN',
-      c2 + 10,
-      metaY - 20,
-      bold,
-      10
+      customer.phone || '-',
+      M + 10,
+      customerY + 8,
+      regular,
+      9
     )
 
-    drawText(
+    text(
       page,
-      'RATE',
-      c3 + 10,
-      metaY - 20,
-      bold,
-      10
+      `INVOICE NO : ${
+        memo?.id || 'DRAFT'
+      }`,
+      PAGE.width / 2 + 15,
+      customerY + 35,
+      mono,
+      9
     )
 
-    drawText(
+    text(
       page,
-      'AMOUNT',
-      c4 + 10,
-      metaY - 20,
-      bold,
-      10
+      `DATE : ${parseDate(
+        memo?.created_at
+      )}`,
+      PAGE.width / 2 + 15,
+      customerY + 15,
+      mono,
+      9
     )
 
-    // ==================================================
+    // ======================================================
+    // TABLE START
+    // ======================================================
+
+    let tableTop =
+      customerY - 10
+
+    let cols =
+      drawTableHeader(
+        page,
+        tableTop,
+        bold
+      )
+
+    let cursorY =
+      tableTop - 45
+
+    const footerReserve = 190
+
+    let runningTotal = 0
+
+    // ======================================================
     // ITEMS
-    // ==================================================
+    // ======================================================
 
-    let y = metaY - 55
+    for (
+      let i = 0;
+      i < items.length;
+      i++
+    ) {
+      const item = items[i]
 
-    items
-      .slice(0, 7)
-      .forEach((item) => {
-        drawText(
-          page,
-          item.quantity || 0,
-          M + 18,
-          y,
-          regular,
-          10
+      const rowHeight =
+        getRowHeight(
+          item,
+          regular
         )
 
-        let desc = (
-          item.name || '-'
-        ).toUpperCase()
+      // ======================================================
+      // PAGINATION
+      // ======================================================
 
-        if (item.size) {
-          desc += ` (${item.size})`
-        }
-
-        desc = desc.slice(0, 34)
-
-        drawSafeText(
+      if (
+        cursorY - rowHeight <
+        footerReserve
+      ) {
+        text(
           page,
-          desc,
-          c1 + 10,
-          y,
-          250,
-          regular,
-          10
-        )
-
-        drawSafeText(
-          page,
-          item.hsn_code ||
-            '6101',
-          c2 + 10,
-          y,
-          55,
-          mono,
+          `Carry Forward : ${inr(
+            runningTotal
+          )}`,
+          PAGE.width - 220,
+          60,
+          bold,
           9
         )
 
-        drawRightText(
+        // NEW PAGE
+
+        page =
+          createPage(doc)
+
+        drawMasterBorder(page)
+
+        text(
           page,
-          inr(
-            item.unit_price || 0
-          ),
-          c4 - 12,
-          y,
-          mono,
-          9,
-          65
+          `Brought Forward : ${inr(
+            runningTotal
+          )}`,
+          PAGE.width - 240,
+          PAGE.height - 40,
+          bold,
+          9
         )
 
-        drawRightText(
+        cols =
+          drawTableHeader(
+            page,
+            PAGE.height - 70,
+            bold
+          )
+
+        cursorY =
+          PAGE.height - 115
+      }
+
+      if (i % 2 === 0) {
+        box(
           page,
-          inr(
-            (item.quantity ||
-              0) *
-              (item.unit_price ||
-                0)
-          ),
-          width - 18,
-          y,
-          mono,
-          9,
-          78
+          M,
+          cursorY -
+            rowHeight +
+            10,
+          PAGE.width -
+            M * 2,
+          rowHeight,
+          0,
+          LIGHTER
         )
+      }
 
-        y -= 28
-      })
+      line(
+        page,
+        M,
+        cursorY -
+          rowHeight +
+          10,
+        PAGE.width - M,
+        cursorY -
+          rowHeight +
+          10,
+        0.5
+      )
 
-    // ==================================================
-    // FOOTER
-    // ==================================================
+      text(
+        page,
+        String(
+          item.quantity || 0
+        ),
+        cols.qty + 10,
+        cursorY,
+        regular,
+        9
+      )
 
-    const footerH = 120
-    const footerY = 10
+      let desc = (
+        item.name || '-'
+      ).toUpperCase()
+
+      if (item.size) {
+        desc += ` (${item.size})`
+      }
+
+      drawWrappedText(
+        page,
+        desc,
+        cols.desc + 8,
+        cursorY,
+        TABLE.desc - 16,
+        regular,
+        8,
+        10,
+        5
+      )
+
+      text(
+        page,
+        item.hsn_code ||
+          '6101',
+        cols.hsn + 10,
+        cursorY,
+        mono,
+        8,
+        GRAY
+      )
+
+      drawRight(
+        page,
+        inr(
+          item.unit_price || 0
+        ),
+        cols.rate,
+        cursorY,
+        TABLE.rate,
+        mono,
+        8
+      )
+
+      const amount =
+        (item.quantity || 0) *
+        (item.unit_price || 0)
+
+      runningTotal += amount
+
+      drawRight(
+        page,
+        inr(amount),
+        cols.amount,
+        cursorY,
+        TABLE.amount,
+        mono,
+        8
+      )
+
+      cursorY -= rowHeight
+    }
+
+    // ======================================================
+    // AMOUNT IN WORDS
+    // ======================================================
 
     box(
       page,
       M,
-      footerY,
-      width - M * 2,
-      footerH,
-      1
+      178,
+      PAGE.width - M * 2,
+      32
     )
 
-    // ==================================================
-    // FOOTER COLUMNS
-    // ==================================================
-
-    const f1 = M + 140
-    const f2 = M + 290
-    const f3 = M + 410
-
-    ;[f1, f2, f3].forEach(
-      (x) => {
-        line(
-          page,
-          x,
-          footerY,
-          x,
-          footerY +
-            footerH,
-          1
-        )
-      }
-    )
-
-    // ==================================================
-    // QR SECTION
-    // ==================================================
-
-    drawText(
+    text(
       page,
-      'PAYMENT QR',
-      M + 28,
-      footerY + 95,
+      'AMOUNT IN WORDS',
+      M + 10,
+      196,
+      bold,
+      8
+    )
+
+    drawWrappedText(
+      page,
+      numberToWords(total),
+      M + 10,
+      184,
+      520,
+      regular,
+      8
+    )
+
+    // ======================================================
+    // FOOTER
+    // ======================================================
+
+    box(
+      page,
+      M,
+      M,
+      PAGE.width - M * 2,
+      150
+    )
+
+    const fx1 = M + 180
+
+    const fx2 =
+      PAGE.width - 200
+
+    line(
+      page,
+      fx1,
+      M,
+      fx1,
+      M + 150
+    )
+
+    line(
+      page,
+      fx2,
+      M,
+      fx2,
+      M + 150
+    )
+
+    // ======================================================
+    // QR
+    // ======================================================
+
+    text(
+      page,
+      'SCAN & PAY',
+      M + 48,
+      150,
       bold,
       10
     )
 
     if (qrCodeUrl) {
-      const qr =
-        await fetchImage(
-          qrCodeUrl
-        )
+      try {
+        const qr =
+          await fetchImage(
+            qrCodeUrl
+          )
 
-      if (qr) {
-        try {
-          const img =
-            qr.contentType.includes(
+        if (qr?.bytes) {
+          let img = null
+
+          // ======================================================
+          // SVG SUPPORT
+          // ======================================================
+
+          if (
+            qr.type.includes(
+              'svg'
+            )
+          ) {
+            console.log(
+              'SVG QR DETECTED - Convert using sharp/resvg'
+            )
+          } else if (
+            qr.type.includes(
               'png'
             )
-              ? await doc.embedPng(
-                  qr.bytes
-                )
-              : await doc.embedJpg(
-                  qr.bytes
-                )
+          ) {
+            img =
+              await doc.embedPng(
+                qr.bytes
+              )
+          } else {
+            img =
+              await doc.embedJpg(
+                qr.bytes
+              )
+          }
 
-          page.drawImage(img, {
-            x: M + 20,
-            y: footerY + 18,
-            width: 90,
-            height: 90,
-          })
-        } catch (err) {
-          console.error(
-            'QR ERROR',
-            err
+          if (img) {
+            page.drawImage(img, {
+              x: M + 35,
+              y: 48,
+              width: 95,
+              height: 95,
+            })
+          }
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+
+    // ======================================================
+    // BANK
+    // ======================================================
+
+    text(
+      page,
+      'BANK DETAILS',
+      fx1 + 12,
+      150,
+      bold,
+      9
+    )
+
+    const terms = [
+      `BANK : ${
+        firmData.bank_name ||
+        '-'
+      }`,
+      `A/C : ${
+        firmData.bank_account ||
+        '-'
+      }`,
+      `IFSC : ${
+        firmData.ifsc || '-'
+      }`,
+      '',
+      'Goods once sold will not',
+      'be taken back.',
+    ]
+
+    let ty = 132
+
+    terms.forEach((t) => {
+      text(
+        page,
+        t,
+        fx1 + 12,
+        ty,
+        regular,
+        8
+      )
+
+      ty -= 16
+    })
+
+    // ======================================================
+    // TOTALS
+    // ======================================================
+
+    box(
+      page,
+      fx2,
+      M,
+      PAGE.width -
+        M -
+        fx2,
+      150,
+      1,
+      BLACK
+    )
+
+    const totals = [
+      [
+        'SUBTOTAL',
+        inr(subtotal),
+      ],
+      [
+        'GST',
+        inr(gstAmt),
+      ],
+      [
+        'GRAND TOTAL',
+        inr(total),
+      ],
+    ]
+
+    let totalY = 125
+
+    totals.forEach(
+      ([label, value], i) => {
+        if (i === 2) {
+          box(
+            page,
+            fx2,
+            42,
+            PAGE.width -
+              M -
+              fx2,
+            40,
+            1,
+            BLACK
+          )
+
+          text(
+            page,
+            label,
+            fx2 + 12,
+            58,
+            bold,
+            11,
+            WHITE
+          )
+
+          drawRight(
+            page,
+            value,
+            fx2,
+            58,
+            PAGE.width -
+              M -
+              fx2,
+            mono,
+            11
+          )
+        } else {
+          text(
+            page,
+            label,
+            fx2 + 12,
+            totalY,
+            bold,
+            9
+          )
+
+          drawRight(
+            page,
+            value,
+            fx2,
+            totalY,
+            PAGE.width -
+              M -
+              fx2,
+            mono,
+            9
           )
         }
+
+        totalY -= 28
       }
-    }
-
-    // ==================================================
-    // GST BREAKDOWN
-    // ==================================================
-
-    drawText(
-      page,
-      'GST BREAKDOWN',
-      f1 + 18,
-      footerY + 95,
-      bold,
-      10
     )
 
-    drawText(
+    // ======================================================
+    // SIGNATURE
+    // ======================================================
+
+    text(
       page,
-      'CGST (9%)',
-      f1 + 18,
-      footerY + 70,
+      'Authorized Signatory',
+      PAGE.width - 165,
+      18,
       regular,
-      9
+      8,
+      GRAY
     )
 
-    drawRightText(
-      page,
-      inr(gstAmt / 2),
-      f2 - 15,
-      footerY + 70,
-      mono,
-      9,
-      75
-    )
-
-    drawText(
-      page,
-      'SGST (9%)',
-      f1 + 18,
-      footerY + 45,
-      regular,
-      9
-    )
-
-    drawRightText(
-      page,
-      inr(gstAmt / 2),
-      f2 - 15,
-      footerY + 45,
-      mono,
-      9,
-      75
-    )
-
-    drawText(
-      page,
-      'IGST',
-      f1 + 18,
-      footerY + 20,
-      regular,
-      9
-    )
-
-    drawRightText(
-      page,
-      'Rs. 0.00',
-      f2 - 15,
-      footerY + 20,
-      mono,
-      9,
-      75
-    )
-
-    // ==================================================
-    // PAYMENT STATUS
-    // ==================================================
-
-    drawText(
-      page,
-      'PAYMENT STATUS',
-      f2 + 18,
-      footerY + 95,
-      bold,
-      10
-    )
-
-    drawSafeText(
-      page,
-      'Cash Paid',
-      f2 + 18,
-      footerY + 65,
-      90,
-      regular,
-      9
-    )
-
-    drawSafeText(
-      page,
-      'UPI Paid',
-      f2 + 18,
-      footerY + 40,
-      90,
-      regular,
-      9
-    )
-
-    drawSafeText(
-      page,
-      'Bill Balance',
-      f2 + 18,
-      footerY + 15,
-      90,
-      regular,
-      9
-    )
-
-    // ==================================================
-    // TOTAL TABLE
-    // ==================================================
-
-    const totalX = f3
-
-    line(
-      page,
-      totalX,
-      footerY + 80,
-      width - M,
-      footerY + 80,
-      1
-    )
-
-    line(
-      page,
-      totalX,
-      footerY + 40,
-      width - M,
-      footerY + 40,
-      1
-    )
-
-    // VERTICAL SPLIT
-
-    const splitX =
-      totalX + 95
-
-    line(
-      page,
-      splitX,
-      footerY,
-      splitX,
-      footerY + footerH,
-      1
-    )
-
-    // ==================================================
-    // SUB TOTAL
-    // ==================================================
-
-    drawSafeText(
-      page,
-      'SUB TOTAL',
-      totalX + 10,
-      footerY + 90,
-      80,
-      bold,
-      10
-    )
-
-    drawRightText(
-      page,
-      inr(subtotal),
-      width - 18,
-      footerY + 90,
-      mono,
-      10,
-      70
-    )
-
-    // ==================================================
-    // GST TOTAL
-    // ==================================================
-
-    drawSafeText(
-      page,
-      'GST TOTAL',
-      totalX + 10,
-      footerY + 50,
-      80,
-      bold,
-      10
-    )
-
-    drawRightText(
-      page,
-      inr(gstAmt),
-      width - 18,
-      footerY + 50,
-      mono,
-      10,
-      70
-    )
-
-    // ==================================================
-    // GRAND TOTAL
-    // ==================================================
-
-    drawSafeText(
-      page,
-      'GRAND TOTAL',
-      totalX + 10,
-      footerY + 12,
-      80,
-      bold,
-      11
-    )
-
-    drawRightText(
-      page,
-      inr(total),
-      width - 18,
-      footerY + 12,
-      mono,
-      11,
-      82
-    )
-
-    // ==================================================
+    // ======================================================
     // FOOTER NOTE
-    // ==================================================
-
-    if (firmData.footer_note) {
-      const note =
-        fitText(
-          firmData.footer_note,
-          regular,
-          7,
-          260
-        )
-
-      drawText(
-        page,
-        note,
-        width / 2 - 100,
-        4,
-        regular,
-        7,
-        GRAY
-      )
-    }
-
-    // ==================================================
-    // SAVE PDF
-    // ==================================================
-
-    const pdfBytes =
-      await doc.save({
-        useObjectStreams: true,
-      })
-
-    return new Response(
-      pdfBytes,
-      {
-        status: 200,
-        headers: {
-          'Content-Type':
-            'application/pdf',
-          'Content-Disposition':
-            'inline; filename=invoice.pdf',
-        },
-      }
-    )
-  } catch (err) {
-    console.error(err)
-
-    return Response.json(
-      {
-        error:
-          err.message ||
-          'PDF generation failed',
-      },
-      {
-        status: 500,
-      }
-    )
-  }
-      }
+    // ======================================================
