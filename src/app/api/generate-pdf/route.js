@@ -69,7 +69,14 @@ async function fetchImage(url) {
       },
     })
 
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.error(
+        'IMAGE FETCH FAILED',
+        res.status
+      )
+
+      return null
+    }
 
     return {
       bytes:
@@ -79,7 +86,12 @@ async function fetchImage(url) {
           'content-type'
         ) || '',
     }
-  } catch {
+  } catch (err) {
+    console.error(
+      'FETCH IMAGE ERROR',
+      err
+    )
+
     return null
   }
 }
@@ -307,7 +319,7 @@ export async function POST(req) {
           )
 
         if (logo?.bytes) {
-          let img
+          let img = null
 
           try {
             img =
@@ -321,53 +333,54 @@ export async function POST(req) {
               )
           }
 
-          const logoBoxW =
-            half - 4
+          if (img) {
+            const boxW =
+              half - 10
 
-          const logoBoxH =
-            headerH - 4
+            const boxH =
+              headerH - 10
 
-          const imgRatio =
-            img.width / img.height
+            const imgRatio =
+              img.width /
+              img.height
 
-          let drawW =
-            logoBoxW
+            let drawW = boxW
+            let drawH =
+              drawW / imgRatio
 
-          let drawH =
-            drawW / imgRatio
+            if (
+              drawH > boxH
+            ) {
+              drawH = boxH
+              drawW =
+                drawH * imgRatio
+            }
 
-          if (
-            drawH > logoBoxH
-          ) {
-            drawH = logoBoxH
-            drawW =
-              drawH * imgRatio
+            const lx =
+              M +
+              (boxW -
+                drawW) /
+                2 +
+              5
+
+            const ly =
+              headerY +
+              (boxH -
+                drawH) /
+                2 +
+              5
+
+            page.drawImage(img, {
+              x: lx,
+              y: ly,
+              width: drawW,
+              height: drawH,
+            })
           }
-
-          const lx =
-            M +
-            (logoBoxW -
-              drawW) /
-              2 +
-            2
-
-          const ly =
-            headerY +
-            (logoBoxH -
-              drawH) /
-              2 +
-            2
-
-          page.drawImage(img, {
-            x: lx,
-            y: ly,
-            width: drawW,
-            height: drawH,
-          })
         }
       } catch (err) {
         console.error(
-          'LOGO ERROR:',
+          'LOGO ERROR',
           err
         )
       }
@@ -377,22 +390,13 @@ export async function POST(req) {
     // CUSTOMER DETAILS
     // ==================================================
 
-    text(
-      page,
-      'CUSTOMER DETAILS',
-      M + half + 20,
-      headerY + 70,
-      bold,
-      FONT.lg
-    )
-
     labelValue(
       page,
       'Customer Name',
       customer.name ||
         'Walk-in Customer',
       M + half + 20,
-      headerY + 42,
+      headerY + 58,
       regular,
       bold
     )
@@ -402,7 +406,7 @@ export async function POST(req) {
       'Mobile No',
       customer.phone || '-',
       M + half + 20,
-      headerY + 18,
+      headerY + 32,
       regular,
       regular
     )
@@ -496,8 +500,6 @@ export async function POST(req) {
       tableTop - tableY
     )
 
-    // HEADER ROW
-
     const th = 28
 
     box(
@@ -510,7 +512,9 @@ export async function POST(req) {
       LIGHT
     )
 
-    // BETTER COLUMN WIDTHS
+    // ==================================================
+    // COLUMNS
+    // ==================================================
 
     const c1 = M + 55
     const c2 = M + 320
@@ -529,7 +533,9 @@ export async function POST(req) {
       }
     )
 
+    // ==================================================
     // HEADERS
+    // ==================================================
 
     text(
       page,
@@ -542,7 +548,7 @@ export async function POST(req) {
     text(
       page,
       'DESCRIPTION',
-      c1 + 70,
+      c1 + 60,
       tableTop - 18,
       bold
     )
@@ -597,7 +603,7 @@ export async function POST(req) {
           desc += ` (${item.size})`
         }
 
-        desc = desc.slice(0, 40)
+        desc = desc.slice(0, 38)
 
         text(
           page,
@@ -627,10 +633,8 @@ export async function POST(req) {
           c3 + 8,
           y,
           mono,
-          9
+          8
         )
-
-        // FIXED AMOUNT ALIGNMENT
 
         const amount = inr(
           (item.quantity || 0) *
@@ -641,10 +645,10 @@ export async function POST(req) {
         rightText(
           page,
           amount,
-          width - 28,
+          width - 30,
           y,
           mono,
-          9
+          8
         )
 
         y -= 26
@@ -686,9 +690,10 @@ export async function POST(req) {
     text(
       page,
       'PAYMENT QR',
-      M + 24,
+      M + 25,
       footerY + 95,
-      bold
+      bold,
+      9
     )
 
     if (qrCodeUrl) {
@@ -698,35 +703,48 @@ export async function POST(req) {
             qrCodeUrl
           )
 
-        if (qr?.bytes) {
-          let img
+        if (!qr?.bytes) {
+          throw new Error(
+            'QR bytes missing'
+          )
+        }
 
+        let img = null
+
+        try {
+          img =
+            await doc.embedPng(
+              qr.bytes
+            )
+        } catch {
           try {
-            img =
-              await doc.embedPng(
-                qr.bytes
-              )
-          } catch {
             img =
               await doc.embedJpg(
                 qr.bytes
               )
+          } catch (err) {
+            console.error(
+              'QR FORMAT ERROR',
+              err
+            )
           }
+        }
 
-          const qrSize = 82
+        if (img) {
+          const qrSize = 78
 
           page.drawImage(img, {
-            x: M + 24,
-            y: footerY + 18,
+            x: M + 30,
+            y: footerY + 20,
             width: qrSize,
             height: qrSize,
           })
         } else {
           text(
             page,
-            'QR NOT FOUND',
-            M + 24,
-            footerY + 50,
+            'INVALID QR',
+            M + 35,
+            footerY + 55,
             regular,
             8,
             GRAY
@@ -734,15 +752,15 @@ export async function POST(req) {
         }
       } catch (err) {
         console.error(
-          'QR ERROR:',
+          'QR LOAD ERROR',
           err
         )
 
         text(
           page,
           'QR ERROR',
-          M + 24,
-          footerY + 50,
+          M + 35,
+          footerY + 55,
           regular,
           8,
           GRAY
@@ -759,7 +777,8 @@ export async function POST(req) {
       'GST BREAKDOWN',
       f1 + 18,
       footerY + 95,
-      bold
+      bold,
+      9
     )
 
     const gstRows = [
@@ -783,7 +802,7 @@ export async function POST(req) {
         f1 + 18,
         gy,
         regular,
-        9
+        8
       )
 
       rightText(
@@ -792,7 +811,7 @@ export async function POST(req) {
         f2 - 18,
         gy,
         mono,
-        9
+        8
       )
 
       gy -= 25
@@ -807,7 +826,8 @@ export async function POST(req) {
       'PAYMENT STATUS',
       f2 + 18,
       footerY + 95,
-      bold
+      bold,
+      9
     )
 
     const statusRows = [
@@ -825,7 +845,7 @@ export async function POST(req) {
         f2 + 18,
         py,
         regular,
-        9
+        8
       )
 
       py -= 25
@@ -836,7 +856,7 @@ export async function POST(req) {
     // ==================================================
 
     const tx = f3
-    const split = tx + 120
+    const split = tx + 100
 
     line(
       page,
@@ -867,19 +887,19 @@ export async function POST(req) {
         'SUB TOTAL',
         inr(subtotal),
         footerY + 90,
-        FONT.lg,
+        10,
       ],
       [
         'GST TOTAL',
         inr(gstAmt),
         footerY + 50,
-        FONT.lg,
+        10,
       ],
       [
         'GRAND TOTAL',
         inr(total),
         footerY + 12,
-        13,
+        11,
       ],
     ]
 
@@ -888,7 +908,7 @@ export async function POST(req) {
         text(
           page,
           label,
-          tx + 18,
+          tx + 12,
           ty,
           bold,
           size
@@ -897,10 +917,10 @@ export async function POST(req) {
         rightText(
           page,
           value,
-          width - 20,
+          width - 30,
           ty,
           mono,
-          size
+          size - 1
         )
       }
     )
@@ -961,4 +981,4 @@ export async function POST(req) {
       }
     )
   }
-        }
+}
