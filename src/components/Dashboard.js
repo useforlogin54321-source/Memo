@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { sbFetch, fmt } from './supabase'
+import { sbFetch, fmt, loadUserFirm } from './supabase'
 
 function StatCard({ label, value, sub }) {
   return (
@@ -14,8 +14,11 @@ function StatCard({ label, value, sub }) {
 
 export default function Dashboard({ onNavigate }) {
   const [stats, setStats] = useState(null)
+  const [firm, setFirm] = useState(null)
 
   useEffect(() => {
+    loadUserFirm().then(setFirm).catch(() => {})
+
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const iso  = today.toISOString()
@@ -32,11 +35,11 @@ export default function Dashboard({ onNavigate }) {
   }, [])
 
   const tiles = [
-    { icon: '📦', label: 'New Order',  sub: 'Delivery and school orders', action: () => onNavigate('editor', { memoType: 'order' }) },
+    { icon: '📦', label: 'New Order',  sub: 'Manage delivery orders', action: () => onNavigate('editor', { memoType: 'order' }) },
     { icon: '💰', label: 'New Sale',   sub: 'Walk-in retail billing',    action: () => onNavigate('editor', { memoType: 'sale'  }) },
-    { icon: '📜', label: 'History',    sub: 'Sales and order records',   action: () => onNavigate('history') },
-    { icon: '📊', label: 'Reports',    sub: 'Sales and payment analysis', action: () => onNavigate('reports') },
-    { icon: '⚙️', label: 'Settings',   sub: 'Branding and products',     action: () => onNavigate('settings') },
+    { icon: '📜', label: 'History',    sub: 'View all records',   action: () => onNavigate('history') },
+    { icon: '📊', label: 'Reports',    sub: 'Business analysis', action: () => onNavigate('reports') },
+    { icon: '⚙️', label: 'Settings',   sub: 'Firm & branding',     action: () => onNavigate('settings') },
   ]
 
   return (
@@ -44,17 +47,17 @@ export default function Dashboard({ onNavigate }) {
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col justify-between px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)] lg:items-stretch">
 
-          {/* LEFT: Brand panel */}
           <section className="rounded-[32px] border border-white/10 bg-zinc-950/80 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur sm:p-8 lg:p-10">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-sky-200/60">Built by Harsh Nannaware</p>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-sky-200/60">Business Dashboard</p>
             <div className="mt-5 max-w-2xl">
-              <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">Memo App</h1>
+              <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
+                {firm?.name || 'Memo App'}
+              </h1>
               <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-300 sm:text-base">
-                Professional multi-tenant billing platform with white-label support.
+                Professional billing and order management for your business.
               </p>
             </div>
 
-            {/* Today's stats */}
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
               {stats ? (
                 <>
@@ -72,7 +75,6 @@ export default function Dashboard({ onNavigate }) {
             </div>
           </section>
 
-          {/* RIGHT: Nav tiles */}
           <section className="grid grid-cols-2 gap-4 sm:gap-5">
             {tiles.map((tile) => (
               <button
@@ -93,8 +95,8 @@ export default function Dashboard({ onNavigate }) {
         </div>
 
         <div className="mt-6 flex flex-col gap-3 rounded-[28px] border border-white/8 bg-black/20 px-5 py-4 text-xs text-zinc-400 sm:flex-row sm:items-center sm:justify-between">
-          <p>Memo App v2.0</p>
-          <p>Built by Harsh Nannaware · 📞 7620885178</p>
+          <p>SaaS Billing Platform</p>
+          <p>{firm?.phone_number || ''}</p>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { Search, Pencil, Trash2, Printer } from 'lucide-react'
-import { sbFetch, fmt, loadFirmData } from './supabase'
+import { sbFetch, fmt, loadUserFirm } from './supabase'
 import { useToast } from './Toast'
 
 async function fetchItems(memoId) {
@@ -17,6 +17,8 @@ async function fetchItems(memoId) {
         hsn_code:   item.products?.hsn_code || '6101',
         unit_price: item.unit_price,
         quantity:   item.quantity,
+        narration:  item.narration || '',
+        description: item.description || ''
       }))
     : []
 }
@@ -26,11 +28,14 @@ export default function HistoryPage({ onBack, onEdit }) {
   const [loading, setLoading]     = useState(true)
   const [tab, setTab]             = useState('sale')
   const [search, setSearch]       = useState('')
-  const [reprintingId, setReprintingId] = useState(null)   // FIX: was generatingPdf (boolean), now tracks memo id
+  const [reprintingId, setReprintingId] = useState(null)
+  const [firmData, setFirmData] = useState(null)
 
   const toast = useToast()
 
   useEffect(() => {
+    loadUserFirm().then(setFirmData).catch(() => {})
+    
     sbFetch('/memos?select=*,firms(name)&order=created_at.desc&limit=200')
       .then((data) => setMemos(Array.isArray(data) ? data : []))
       .catch(() => toast.error('Could not load memos'))
@@ -52,13 +57,10 @@ export default function HistoryPage({ onBack, onEdit }) {
 
   const grandTotal = filtered.reduce((sum, memo) => sum + Number(memo.total_amount), 0)
 
-  // FIX: handleReprint now properly calls the PDF API (setPrintData was never defined — crash)
   async function handleReprint(memo) {
     setReprintingId(memo.id)
     try {
       const items    = await fetchItems(memo.id)
-      const firm     = memo.firms?.name || 'Bombay Hosiery'
-      const firmData = await loadFirmData(firm)
       const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
       const gstAmt   = memo.gst_enabled ? subtotal * 0.05 : 0
       const total    = subtotal + gstAmt
@@ -69,7 +71,6 @@ export default function HistoryPage({ onBack, onEdit }) {
         body: JSON.stringify({
           memo,
           items,
-          firm,
           firmData,
           customer: { name: memo.customer_name || '', phone: memo.customer_phone || '' },
           subtotal,
@@ -86,8 +87,11 @@ export default function HistoryPage({ onBack, onEdit }) {
 
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
-      window.open(url, '_blank')
-      toast.success('PDF opened in new tab')
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `reprint-${memo.id}.pdf`
+      a.click()
+      toast.success('PDF downloaded')
     } catch (err) {
       toast.error(`Reprint failed: ${err.message}`)
     } finally {
@@ -98,7 +102,7 @@ export default function HistoryPage({ onBack, onEdit }) {
   async function handleEdit(memo) {
     try {
       const items = await fetchItems(memo.id)
-      onEdit({ memoType: memo.memo_type || 'sale', firm: memo.firms?.name || 'Bombay Hosiery', editMemo: memo, items })
+      onEdit({ memoType: memo.memo_type || 'sale', editMemo: memo, items })
     } catch {
       toast.error('Could not load memo for editing')
     }
@@ -118,7 +122,6 @@ export default function HistoryPage({ onBack, onEdit }) {
 
   return (
     <div className="min-h-screen pb-8">
-      {/* Top bar */}
       <div className="sticky top-0 z-20 border-b border-white/10 bg-zinc-950/85 px-4 py-4 backdrop-blur">
         <div className="mx-auto max-w-7xl">
           <div className="flex flex-wrap items-center gap-3">
@@ -153,7 +156,6 @@ export default function HistoryPage({ onBack, onEdit }) {
         </div>
       </div>
 
-      {/* Memo cards */}
       <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
         {loading && <p className="py-16 text-center text-sm text-zinc-500">Loading…</p>}
         {!loading && filtered.length === 0 && (
@@ -166,7 +168,7 @@ export default function HistoryPage({ onBack, onEdit }) {
                 <div>
                   <p className="text-sm font-semibold text-white">{memo.customer_name || 'Walk-in'}</p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {memo.firms?.name} · {new Date(memo.created_at).toLocaleString('en-IN')}
+                    {new Date(memo.created_at).toLocaleString('en-IN')}
                   </p>
                   {memo.customer_phone && <p className="mt-2 text-xs text-zinc-400">☎ {memo.customer_phone}</p>}
                 </div>

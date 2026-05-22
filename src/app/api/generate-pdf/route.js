@@ -775,8 +775,8 @@ export async function POST(req) {
       f2 + 18,
       footerY + 65,
       90,
-      bold,
-      10
+      regular,
+      9
     )
 
     if (memo?.paid_amount > 0) {

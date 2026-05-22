@@ -13,6 +13,11 @@ function assertEnv() {
 export async function sbFetch(path, opts = {}) {
   assertEnv()
   const { prefer, headers: extraHeaders, ...restOpts } = opts
+  
+  // In a real SaaS, we would get the JWT from the auth session
+  // For now, we continue using anon key, but RLS will handle the user_id filtering
+  // if the user is logged in via Supabase Auth.
+  
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
     headers: {
       apikey:          SUPABASE_ANON_KEY,
@@ -46,11 +51,6 @@ export async function uploadToStorage(path, file) {
   return `${SUPABASE_URL}/storage/v1/object/public/branding/${path}`
 }
 
-export const FIRM_IDS = {
-  'Bombay Hosiery': '5cb4e355-d9db-4ae4-bcd6-40a2662df90f',
-  'Ace Apparel':    'c2feaaa7-f13d-46b7-9358-8949a64798d9',
-}
-
 export const fmt       = (n) => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 export const GST_RATE  = 0.05
 
@@ -59,8 +59,9 @@ export function debounce(fn, ms) {
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms) }
 }
 
-export async function loadFirmData(firmName) {
-  const d = await sbFetch(`/firms?name=eq.${encodeURIComponent(firmName)}&select=*`)
+/** Load the current user's firm. In this SaaS model, one user = one firm. */
+export async function loadUserFirm() {
+  const d = await sbFetch(`/firms?select=*&limit=1`)
   return d?.[0] || null
 }
 

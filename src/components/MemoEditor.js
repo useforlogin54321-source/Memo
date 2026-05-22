@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { sbFetch, FIRM_IDS, fmt, GST_RATE, debounce, loadFirmData } from './supabase'
+import { sbFetch, fmt, GST_RATE, debounce, loadUserFirm } from './supabase'
 import { useToast } from './Toast'
 import PaymentStatusSelector from './PaymentStatusSelector'
 
@@ -10,7 +10,6 @@ export default function MemoEditor({ config, onBack }) {
 
   const toast = useToast()
 
-  const [firm, setFirm]           = useState(config?.firm || 'Bombay Hosiery')
   const [gstOn, setGstOn]         = useState(editMemo?.gst_enabled || false)
   const [customer, setCustomer]   = useState({ name: editMemo?.customer_name || '', phone: editMemo?.customer_phone || '' })
   const [query, setQuery]         = useState('')
@@ -40,11 +39,10 @@ export default function MemoEditor({ config, onBack }) {
   useEffect(() => { resultsRef.current   = results  }, [results])
   useEffect(() => { firmDataRef.current  = firmData }, [firmData])
 
-  const isBombay = firm === 'Bombay Hosiery'
   const isEdit   = !!editMemo
-  const isGstOn  = !isBombay && gstOn
+  const isGstOn  = gstOn
 
-  useEffect(() => { loadFirmData(firm).then(setFirmData).catch(() => {}) }, [firm])
+  useEffect(() => { loadUserFirm().then(setFirmData).catch(() => {}) }, [])
   useEffect(() => { nameRef.current?.focus() }, [])
 
   useEffect(() => {
@@ -109,6 +107,11 @@ export default function MemoEditor({ config, onBack }) {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [key]: val } : item))
   }
 
+  function updateQty(id, q) {
+    if (q < 1) { setItems(prev => prev.filter(i => i.product_id !== id)); return }
+    setItems(prev => prev.map(i => i.product_id === id ? { ...i, quantity: q } : i))
+  }
+
   function handleSearchKey(e) {
     if (resultsRef.current.length === 0) return
     if      (e.key === 'ArrowDown') { e.preventDefault(); setSelectedResult((p) => Math.min(p + 1, resultsRef.current.length - 1)) }
@@ -133,7 +136,6 @@ export default function MemoEditor({ config, onBack }) {
         body: JSON.stringify({
           memo,
           items: itemsRef.current,
-          firm,
           firmData: fd || firmDataRef.current,
           customer,
           subtotal,
@@ -160,27 +162,23 @@ export default function MemoEditor({ config, onBack }) {
 
   async function saveMemo() {
     if (!items.length) { toast.error('Add at least one product first.'); return }
+    if (!firmData) { toast.error('Please configure your firm settings first.'); return }
     setSaving(true)
     try {
       let memo
       const fd = firmDataRef.current
-      const firmId = FIRM_IDS[firm]
 
-      // Generate invoice number if not edit
       let invoice_number = editMemo?.invoice_number
       if (!isEdit) {
-        const tenant_id = fd?.tenant_id
-        if (tenant_id) {
-          const invRes = await sbFetch(`/rpc/generate_invoice_number`, {
-            method: 'POST',
-            body: JSON.stringify({ p_tenant_id: tenant_id, p_prefix: 'MEMO' })
-          })
-          invoice_number = invRes
-        }
+        const invRes = await sbFetch(`/rpc/generate_invoice_number`, {
+          method: 'POST',
+          body: JSON.stringify({ p_tenant_id: fd.id, p_prefix: 'MEMO' })
+        })
+        invoice_number = invRes
       }
 
       const memoBody = {
-        firm_id:        firmId,
+        firm_id:        fd.id,
         customer_name:  customer.name,
         customer_phone: customer.phone,
         gst_enabled:    isGstOn,
@@ -251,14 +249,13 @@ export default function MemoEditor({ config, onBack }) {
           <div className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5">
               <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500 mb-3">Firm & Payment</p>
-              <div className="flex rounded-2xl bg-black/30 p-1.5 gap-1 mb-4">
-                {['Bombay Hosiery', 'Ace Apparel'].map((f) => (
-                  <button key={f}
-                    onClick={() => { setFirm(f); setGstOn(false); setSavedMemo(null) }}
-                    className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold transition ${firm === f ? 'bg-sky-300/15 text-sky-100 shadow-[inset_0_0_0_1px_rgba(125,211,252,0.2)]' : 'text-zinc-400 hover:text-white'}`}>
-                    {f}
-                  </button>
-                ))}
+              <div className="mb-4">
+                <p className="text-sm font-bold text-white">{firmData?.name || 'Loading firm...'}</p>
+                <p className="text-xs text-zinc-500">{firmData?.address || ''}</p>
+              </div>
+              <div className="flex items-center gap-2 mb-4">
+                <input type="checkbox" id="gst-toggle" checked={gstOn} onChange={(e) => setGstOn(e.target.checked)} className="h-4 w-4 rounded border-white/10 bg-black/25 text-sky-400" />
+                <label htmlFor="gst-toggle" className="text-xs font-semibold text-zinc-400">Enable GST (5%)</label>
               </div>
               <PaymentStatusSelector value={paymentInfo} onChange={setPaymentInfo} />
             </div>

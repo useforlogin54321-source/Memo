@@ -1,11 +1,10 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { sbFetch, uploadToStorage, parseCsvLine } from './supabase'
+import { sbFetch, uploadToStorage, parseCsvLine, loadUserFirm } from './supabase'
 import { useToast } from './Toast'
 import { useTheme } from '@/contexts/ThemeContext'
 
 export default function SettingsPage({ onBack }) {
-  const [activeFirm, setActiveFirm] = useState('Bombay Hosiery')
   const [firmData, setFirmData]     = useState(null)
   const [saving, setSaving]         = useState(false)
   const [saved, setSaved]           = useState(false)
@@ -19,17 +18,32 @@ export default function SettingsPage({ onBack }) {
   const csvRef  = useRef()
 
   useEffect(() => {
-    setFirmData(null)
-    sbFetch(`/firms?name=eq.${encodeURIComponent(activeFirm)}&select=*`)
-      .then((data) => data?.[0] && setFirmData({ ...data[0] }))
+    loadUserFirm()
+      .then((data) => {
+        if (data) setFirmData({ ...data })
+        else {
+          // Initialize a new firm if none exists for the user
+          setFirmData({
+            name: '',
+            address: '',
+            phone_number: '',
+            footer_note: '',
+            gst_number: '',
+            logo_url: '',
+            qr_code_url: '',
+            logo_size: 80,
+            logo_position: 'left'
+          })
+        }
+      })
       .catch(() => toast.error('Could not load firm data'))
-  }, [activeFirm])
+  }, [])
 
   async function handleUpload(file, field) {
     setUploading((prev) => ({ ...prev, [field]: true }))
     try {
       const ext  = file.name.split('.').pop()
-      const path = `${activeFirm.replace(/\s/g, '_')}/${field}_${Date.now()}.${ext}`
+      const path = `user_assets/${field}_${Date.now()}.${ext}`
       const url  = await uploadToStorage(path, file)
       setFirmData((prev) => ({ ...prev, [field === 'logo' ? 'logo_url' : 'qr_code_url']: url }))
       toast.success(`${field === 'logo' ? 'Logo' : 'QR code'} uploaded!`)
@@ -44,20 +58,30 @@ export default function SettingsPage({ onBack }) {
     if (!firmData) return
     setSaving(true)
     try {
-      await sbFetch(`/firms?id=eq.${firmData.id}`, {
-        method: 'PATCH',
-        prefer: 'return=minimal',
-        body: JSON.stringify({
-          address:       firmData.address,
-          phone_number:  firmData.phone_number,
-          footer_note:   firmData.footer_note,
-          gst_number:    firmData.gst_number,
-          logo_url:      firmData.logo_url,
-          qr_code_url:   firmData.qr_code_url,
-          logo_size:     firmData.logo_size,
-          logo_position: firmData.logo_position,
-        }),
-      })
+      if (firmData.id) {
+        await sbFetch(`/firms?id=eq.${firmData.id}`, {
+          method: 'PATCH',
+          prefer: 'return=minimal',
+          body: JSON.stringify({
+            name:          firmData.name,
+            address:       firmData.address,
+            phone_number:  firmData.phone_number,
+            footer_note:   firmData.footer_note,
+            gst_number:    firmData.gst_number,
+            logo_url:      firmData.logo_url,
+            qr_code_url:   firmData.qr_code_url,
+            logo_size:     firmData.logo_size,
+            logo_position: firmData.logo_position,
+          }),
+        })
+      } else {
+        const res = await sbFetch('/firms', {
+          method: 'POST',
+          prefer: 'return=representation',
+          body: JSON.stringify(firmData),
+        })
+        if (res?.[0]) setFirmData(res[0])
+      }
       setSaved(true)
       toast.success('Settings saved!')
       setTimeout(() => setSaved(false), 2500)
@@ -129,7 +153,7 @@ export default function SettingsPage({ onBack }) {
             <button onClick={onBack} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/[0.08] hover:text-white">←</button>
             <div>
               <h1 className="text-base font-bold text-white">Settings</h1>
-              <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">Branding and inventory setup</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">Firm branding and inventory</p>
             </div>
           </div>
           <button onClick={toggleTheme} className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.08]">
@@ -139,17 +163,6 @@ export default function SettingsPage({ onBack }) {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
-        <div className="rounded-[28px] border border-white/10 bg-zinc-900/70 p-2 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:max-w-md">
-          <div className="flex rounded-[22px] bg-black/30 p-1.5">
-            {['Bombay Hosiery', 'Ace Apparel'].map((firm) => (
-              <button key={firm} onClick={() => setActiveFirm(firm)}
-                className={`flex-1 rounded-xl px-4 py-3 text-xs font-semibold transition ${activeFirm === firm ? 'bg-sky-300/15 text-sky-100 shadow-[inset_0_0_0_1px_rgba(125,211,252,0.2)]' : 'text-zinc-400 hover:text-white'}`}>
-                {firm}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {!firmData && <p className="py-16 text-center text-sm text-zinc-500">Loading…</p>}
 
         {firmData && (
@@ -158,6 +171,10 @@ export default function SettingsPage({ onBack }) {
               <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Business Info</p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Business Name</label>
+                    <input value={firmData.name || ''} onChange={(e) => setFirmData(p => ({...p, name: e.target.value}))} className={fieldClassName} placeholder="e.g. My Awesome Shop" />
+                  </div>
                   <div className="sm:col-span-2">
                     <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Address</label>
                     <input value={firmData.address || ''} onChange={(e) => setFirmData(p => ({...p, address: e.target.value}))} className={fieldClassName} />
