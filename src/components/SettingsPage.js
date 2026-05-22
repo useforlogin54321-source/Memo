@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { sbFetch, uploadToStorage, parseCsvLine } from './supabase'
 import { useToast } from './Toast'
+import { useTheme } from '@/contexts/ThemeContext'
 
 export default function SettingsPage({ onBack }) {
   const [activeFirm, setActiveFirm] = useState('Bombay Hosiery')
@@ -10,6 +11,7 @@ export default function SettingsPage({ onBack }) {
   const [saved, setSaved]           = useState(false)
   const [csvStatus, setCsvStatus]   = useState('')
   const [uploading, setUploading]   = useState({ logo: false, qr: false })
+  const { theme, toggleTheme }      = useTheme()
 
   const toast  = useToast()
   const logoRef = useRef()
@@ -66,7 +68,6 @@ export default function SettingsPage({ onBack }) {
     }
   }
 
-  // FIX: use proper CSV parser that handles quoted commas
   async function handleCsv(e) {
     const file = e.target.files[0]
     if (!file) return
@@ -120,28 +121,20 @@ export default function SettingsPage({ onBack }) {
 
   const fieldClassName = 'w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-sky-300/40'
 
-  const FField = ({ label, k, type = 'text', placeholder = '' }) => (
-    <div>
-      <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">{label}</label>
-      <input
-        type={type}
-        value={firmData?.[k] || ''}
-        placeholder={placeholder}
-        onChange={(e) => setFirmData((prev) => ({ ...prev, [k]: e.target.value }))}
-        className={fieldClassName}
-      />
-    </div>
-  )
-
   return (
     <div className="min-h-screen pb-8">
       <div className="sticky top-0 z-20 border-b border-white/10 bg-zinc-950/85 px-4 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-3">
-          <button onClick={onBack} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/[0.08] hover:text-white">←</button>
-          <div>
-            <h1 className="text-base font-bold text-white">Settings</h1>
-            <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">Branding and inventory setup</p>
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/[0.08] hover:text-white">←</button>
+            <div>
+              <h1 className="text-base font-bold text-white">Settings</h1>
+              <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">Branding and inventory setup</p>
+            </div>
           </div>
+          <button onClick={toggleTheme} className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.08]">
+            {theme === 'dark' ? '🌙 Dark Mode' : '☀️ Light Mode'}
+          </button>
         </div>
       </div>
 
@@ -162,25 +155,33 @@ export default function SettingsPage({ onBack }) {
         {firmData && (
           <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)]">
             <div className="space-y-5">
-              {/* Business info */}
               <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Business Info</p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2"><FField label="Address" k="address" placeholder="Shop address" /></div>
-                  <FField label="Phone" k="phone_number" type="tel" placeholder="+91 XXXXX XXXXX" />
-                  <FField label="GST Number" k="gst_number" placeholder="22AAAAA0000A1Z5" />
-                  <div className="sm:col-span-2"><FField label="Footer Note" k="footer_note" placeholder="Thank you for your business!" /></div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Address</label>
+                    <input value={firmData.address || ''} onChange={(e) => setFirmData(p => ({...p, address: e.target.value}))} className={fieldClassName} />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Phone</label>
+                    <input value={firmData.phone_number || ''} onChange={(e) => setFirmData(p => ({...p, phone_number: e.target.value}))} className={fieldClassName} />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">GST Number</label>
+                    <input value={firmData.gst_number || ''} onChange={(e) => setFirmData(p => ({...p, gst_number: e.target.value}))} className={fieldClassName} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Footer Note</label>
+                    <input value={firmData.footer_note || ''} onChange={(e) => setFirmData(p => ({...p, footer_note: e.target.value}))} className={fieldClassName} />
+                  </div>
                 </div>
               </div>
 
-              {/* CSV import */}
               <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Bulk Product Upload</p>
                 <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-zinc-400">
                   <p className="font-semibold text-zinc-300 mb-1">CSV columns (header row required):</p>
                   <p>sku, name, category, size, price, stock_qty, hsn_code</p>
-                  <p className="mt-2 text-zinc-600">BH001, "School Shirt, White", Shirts, S, 250, 100, 6101</p>
-                  <p className="mt-1 text-zinc-600 text-[11px]">Quoted commas in fields are supported.</p>
                 </div>
                 <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={handleCsv} />
                 <button onClick={() => csvRef.current.click()}
@@ -194,11 +195,9 @@ export default function SettingsPage({ onBack }) {
             </div>
 
             <div className="space-y-5">
-              {/* Branding */}
               <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Branding</p>
                 <div className="mt-4 space-y-5">
-
                   <div>
                     <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Logo</label>
                     {firmData.logo_url && (

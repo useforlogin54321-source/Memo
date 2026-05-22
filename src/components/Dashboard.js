@@ -28,13 +28,14 @@ export default function Dashboard({ onNavigate }) {
         const rev    = rows.reduce((s, r) => s + Number(r.total_amount), 0)
         setStats({ sales: sales.length, orders: orders.length, revenue: rev, total: rows.length })
       })
-      .catch(() => {})   // silently ignore if Supabase not configured yet
+      .catch(() => {})
   }, [])
 
   const tiles = [
     { icon: '📦', label: 'New Order',  sub: 'Delivery and school orders', action: () => onNavigate('editor', { memoType: 'order' }) },
     { icon: '💰', label: 'New Sale',   sub: 'Walk-in retail billing',    action: () => onNavigate('editor', { memoType: 'sale'  }) },
     { icon: '📜', label: 'History',    sub: 'Sales and order records',   action: () => onNavigate('history') },
+    { icon: '📊', label: 'Reports',    sub: 'Sales and payment analysis', action: () => onNavigate('reports') },
     { icon: '⚙️', label: 'Settings',   sub: 'Branding and products',     action: () => onNavigate('settings') },
   ]
 
@@ -45,11 +46,11 @@ export default function Dashboard({ onNavigate }) {
 
           {/* LEFT: Brand panel */}
           <section className="rounded-[32px] border border-white/10 bg-zinc-950/80 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur sm:p-8 lg:p-10">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-sky-200/60">Built for Harsh Nannaware</p>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-sky-200/60">Built by Harsh Nannaware</p>
             <div className="mt-5 max-w-2xl">
               <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">Memo App</h1>
               <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-300 sm:text-base">
-                Fast billing and order management — cleaner workspace, keyboard-first workflow, and instant PDF memos with GST support.
+                Professional multi-tenant billing platform with white-label support.
               </p>
             </div>
 
@@ -77,14 +78,14 @@ export default function Dashboard({ onNavigate }) {
               <button
                 key={tile.label}
                 onClick={tile.action}
-                className="group flex min-h-[220px] flex-col justify-between rounded-[28px] border border-white/10 bg-zinc-900/80 p-5 text-left shadow-[0_16px_44px_rgba(0,0,0,0.35)] transition duration-200 hover:-translate-y-0.5 hover:border-sky-300/30 hover:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-sky-300/40 sm:min-h-[240px] sm:p-6"
+                className="group flex min-h-[180px] flex-col justify-between rounded-[28px] border border-white/10 bg-zinc-900/80 p-5 text-left shadow-[0_16px_44px_rgba(0,0,0,0.35)] transition duration-200 hover:-translate-y-0.5 hover:border-sky-300/30 hover:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-sky-300/40 sm:p-6"
               >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.05] text-3xl shadow-inner shadow-black/20 transition group-hover:bg-sky-300/10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.05] text-2xl shadow-inner shadow-black/20 transition group-hover:bg-sky-300/10">
                   {tile.icon}
                 </div>
                 <div>
                   <p className="text-lg font-bold text-white">{tile.label}</p>
-                  <p className="mt-2 max-w-[16rem] text-xs leading-6 text-zinc-400 sm:text-sm">{tile.sub}</p>
+                  <p className="mt-1 max-w-[16rem] text-[11px] leading-5 text-zinc-400 sm:text-xs">{tile.sub}</p>
                 </div>
               </button>
             ))}
@@ -92,11 +93,10 @@ export default function Dashboard({ onNavigate }) {
         </div>
 
         <div className="mt-6 flex flex-col gap-3 rounded-[28px] border border-white/8 bg-black/20 px-5 py-4 text-xs text-zinc-400 sm:flex-row sm:items-center sm:justify-between">
-          <p>Memo App v1.0</p>
-          <p>Harsh Nannaware · 📞 7620885178</p>
+          <p>Memo App v2.0</p>
+          <p>Built by Harsh Nannaware · 📞 7620885178</p>
         </div>
       </div>
     </div>
   )
-        }
-    
+}

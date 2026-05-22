@@ -7,16 +7,8 @@ import {
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
-// ======================================================
-// COLORS
-// ======================================================
-
 const BLACK = rgb(0, 0, 0)
 const GRAY = rgb(0.45, 0.45, 0.45)
-
-// ======================================================
-// HELPERS
-// ======================================================
 
 const inr = (n) =>
   `Rs. ${Number(n || 0).toLocaleString(
@@ -67,10 +59,6 @@ async function fetchImage(url) {
     return null
   }
 }
-
-// ======================================================
-// DRAW HELPERS
-// ======================================================
 
 function line(
   page,
@@ -126,10 +114,6 @@ function drawText(
     }
   )
 }
-
-// ======================================================
-// SAFE TEXT
-// ======================================================
 
 function fitText(
   text,
@@ -212,10 +196,6 @@ function drawRightText(
   })
 }
 
-// ======================================================
-// MAIN
-// ======================================================
-
 export async function POST(req) {
   try {
     const {
@@ -228,10 +208,6 @@ export async function POST(req) {
       total = 0,
       qrCodeUrl,
     } = await req.json()
-
-    // ==================================================
-    // PDF
-    // ==================================================
 
     const doc =
       await PDFDocument.create()
@@ -261,10 +237,6 @@ export async function POST(req) {
 
     const M = 10
 
-    // ==================================================
-    // MASTER BORDER
-    // ==================================================
-
     box(
       page,
       M,
@@ -273,10 +245,6 @@ export async function POST(req) {
       height - M * 2,
       1.5
     )
-
-    // ==================================================
-    // HEADER
-    // ==================================================
 
     const headerH = 100
     const headerY =
@@ -301,10 +269,6 @@ export async function POST(req) {
       headerY + headerH,
       1
     )
-
-    // ==================================================
-    // LOGO
-    // ==================================================
 
     if (firmData.logo_url) {
       const logo =
@@ -336,10 +300,6 @@ export async function POST(req) {
         } catch {}
       }
     }
-
-    // ==================================================
-    // CUSTOMER DETAILS
-    // ==================================================
 
     drawText(
       page,
@@ -398,10 +358,6 @@ export async function POST(req) {
       10
     )
 
-    // ==================================================
-    // TITLE ROW
-    // ==================================================
-
     const titleH = 40
     const titleY =
       headerY - titleH
@@ -423,10 +379,6 @@ export async function POST(req) {
       bold,
       24
     )
-
-    // ==================================================
-    // META ROW
-    // ==================================================
 
     const metaH = 32
     const metaY = titleY - metaH
@@ -460,7 +412,7 @@ export async function POST(req) {
 
     drawSafeText(
       page,
-      memo?.id || 'DRAFT',
+      memo?.invoice_number || memo?.id || 'DRAFT',
       M + 125,
       metaY + 10,
       180,
@@ -498,10 +450,6 @@ export async function POST(req) {
       10
     )
 
-    // ==================================================
-    // PRODUCT TABLE
-    // ==================================================
-
     const tableY = 130
     const tableH =
       metaY - tableY
@@ -515,10 +463,6 @@ export async function POST(req) {
       1
     )
 
-    // ==================================================
-    // TABLE HEADER
-    // ==================================================
-
     const th = 30
 
     line(
@@ -530,18 +474,10 @@ export async function POST(req) {
       1
     )
 
-    // ==================================================
-    // COLUMNS
-    // ==================================================
-
     const c1 = M + 55
     const c2 = M + 340
     const c3 = M + 420
     const c4 = M + 495
-
-    // ==================================================
-    // VERTICAL LINES
-    // ==================================================
 
     ;[c1, c2, c3, c4].forEach(
       (x) => {
@@ -555,10 +491,6 @@ export async function POST(req) {
         )
       }
     )
-
-    // ==================================================
-    // TABLE HEADERS
-    // ==================================================
 
     drawText(
       page,
@@ -605,10 +537,6 @@ export async function POST(req) {
       10
     )
 
-    // ==================================================
-    // ITEMS
-    // ==================================================
-
     let y = metaY - 55
 
     items
@@ -629,6 +557,10 @@ export async function POST(req) {
 
         if (item.size) {
           desc += ` (${item.size})`
+        }
+
+        if (item.narration) {
+          desc += ` - ${item.narration}`
         }
 
         desc = desc.slice(0, 34)
@@ -684,10 +616,6 @@ export async function POST(req) {
         y -= 28
       })
 
-    // ==================================================
-    // FOOTER
-    // ==================================================
-
     const footerH = 120
     const footerY = 10
 
@@ -699,10 +627,6 @@ export async function POST(req) {
       footerH,
       1
     )
-
-    // ==================================================
-    // FOOTER COLUMNS
-    // ==================================================
 
     const f1 = M + 140
     const f2 = M + 290
@@ -721,10 +645,6 @@ export async function POST(req) {
         )
       }
     )
-
-    // ==================================================
-    // QR SECTION
-    // ==================================================
 
     drawText(
       page,
@@ -769,10 +689,6 @@ export async function POST(req) {
       }
     }
 
-    // ==================================================
-    // GST BREAKDOWN
-    // ==================================================
-
     drawText(
       page,
       'GST BREAKDOWN',
@@ -784,7 +700,7 @@ export async function POST(req) {
 
     drawText(
       page,
-      'CGST (9%)',
+      'CGST (2.5%)',
       f1 + 18,
       footerY + 70,
       regular,
@@ -803,7 +719,7 @@ export async function POST(req) {
 
     drawText(
       page,
-      'SGST (9%)',
+      'SGST (2.5%)',
       f1 + 18,
       footerY + 45,
       regular,
@@ -839,10 +755,6 @@ export async function POST(req) {
       75
     )
 
-    // ==================================================
-    // PAYMENT STATUS
-    // ==================================================
-
     drawText(
       page,
       'PAYMENT STATUS',
@@ -852,39 +764,44 @@ export async function POST(req) {
       10
     )
 
+    const paymentStatus = memo?.payment_status || 'pending'
+    const statusText = paymentStatus === 'paid' ? 'PAID' : 
+                      paymentStatus === 'partial' ? 'PARTIAL' : 
+                      paymentStatus === 'unpaid' ? 'UNPAID' : 'PENDING'
+
     drawSafeText(
       page,
-      'Cash Paid',
+      statusText,
       f2 + 18,
       footerY + 65,
       90,
-      regular,
-      9
+      bold,
+      10
     )
 
-    drawSafeText(
-      page,
-      'UPI Paid',
-      f2 + 18,
-      footerY + 40,
-      90,
-      regular,
-      9
-    )
+    if (memo?.paid_amount > 0) {
+      drawSafeText(
+        page,
+        `Paid: ${inr(memo.paid_amount)}`,
+        f2 + 18,
+        footerY + 40,
+        90,
+        regular,
+        8
+      )
+    }
 
-    drawSafeText(
-      page,
-      'Bill Balance',
-      f2 + 18,
-      footerY + 15,
-      90,
-      regular,
-      9
-    )
-
-    // ==================================================
-    // TOTAL TABLE
-    // ==================================================
+    if (memo?.payment_method) {
+      drawSafeText(
+        page,
+        `Via: ${memo.payment_method}`,
+        f2 + 18,
+        footerY + 15,
+        90,
+        regular,
+        8
+      )
+    }
 
     const totalX = f3
 
@@ -906,8 +823,6 @@ export async function POST(req) {
       1
     )
 
-    // VERTICAL SPLIT
-
     const splitX =
       totalX + 95
 
@@ -919,10 +834,6 @@ export async function POST(req) {
       footerY + footerH,
       1
     )
-
-    // ==================================================
-    // SUB TOTAL
-    // ==================================================
 
     drawSafeText(
       page,
@@ -944,10 +855,6 @@ export async function POST(req) {
       70
     )
 
-    // ==================================================
-    // GST TOTAL
-    // ==================================================
-
     drawSafeText(
       page,
       'GST TOTAL',
@@ -967,10 +874,6 @@ export async function POST(req) {
       10,
       70
     )
-
-    // ==================================================
-    // GRAND TOTAL
-    // ==================================================
 
     drawSafeText(
       page,
@@ -992,10 +895,6 @@ export async function POST(req) {
       82
     )
 
-    // ==================================================
-    // FOOTER NOTE
-    // ==================================================
-
     if (firmData.footer_note) {
       const note =
         fitText(
@@ -1015,10 +914,6 @@ export async function POST(req) {
         GRAY
       )
     }
-
-    // ==================================================
-    // SAVE PDF
-    // ==================================================
 
     const pdfBytes =
       await doc.save({
@@ -1051,4 +946,4 @@ export async function POST(req) {
       }
     )
   }
-      }
+}

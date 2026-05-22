@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { sbFetch, FIRM_IDS, fmt, GST_RATE, debounce, loadFirmData } from './supabase'
 import { useToast } from './Toast'
+import PaymentStatusSelector from './PaymentStatusSelector'
 
 export default function MemoEditor({ config, onBack }) {
   const memoType = config?.memoType || 'sale'
@@ -20,6 +21,11 @@ export default function MemoEditor({ config, onBack }) {
   const [savedMemo, setSavedMemo] = useState(editMemo || null)
   const [firmData, setFirmData]   = useState(null)
   const [selectedResult, setSelectedResult] = useState(-1)
+  const [paymentInfo, setPaymentInfo] = useState({
+    payment_status: editMemo?.payment_status || 'pending',
+    paid_amount: editMemo?.paid_amount || 0,
+    payment_method: editMemo?.payment_method || ''
+  })
 
   const nameRef      = useRef()
   const phoneRef     = useRef()
@@ -41,7 +47,6 @@ export default function MemoEditor({ config, onBack }) {
   useEffect(() => { loadFirmData(firm).then(setFirmData).catch(() => {}) }, [firm])
   useEffect(() => { nameRef.current?.focus() }, [])
 
-  // Load items when editing an existing memo
   useEffect(() => {
     if (!isEdit || !editMemo?.id) return
     sbFetch(`/memo_items?memo_id=eq.${editMemo.id}&select=*,products(id,sku,name,size,category,hsn_code)`)
@@ -55,12 +60,13 @@ export default function MemoEditor({ config, onBack }) {
           hsn_code:   i.products?.hsn_code || '6101',
           unit_price: i.unit_price,
           quantity:   i.quantity,
+          narration:  i.narration || '',
+          description: i.description || ''
         })))
       })
       .catch(() => toast.error('Could not load memo items'))
   }, [isEdit, editMemo?.id])
 
-  // Debounced product search
   const doSearch = useCallback(
     debounce(async (q) => {
       if (!q.trim()) { setResults([]); setSelectedResult(-1); return }
@@ -91,15 +97,16 @@ export default function MemoEditor({ config, onBack }) {
         hsn_code:   product.hsn_code || '6101',
         unit_price: product.price,
         quantity:   1,
+        narration:  '',
+        description: ''
       }]
     })
     setQuery(''); setResults([]); setSelectedResult(-1)
     setTimeout(() => searchRef.current?.focus(), 50)
   }
 
-  function updateQty(productId, qty) {
-    if (qty < 1) { setItems((prev) => prev.filter((i) => i.product_id !== productId)); return }
-    setItems((prev) => prev.map((i) => i.product_id === productId ? { ...i, quantity: qty } : i))
+  function updateItem(idx, key, val) {
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, [key]: val } : item))
   }
 
   function handleSearchKey(e) {
@@ -113,30 +120,10 @@ export default function MemoEditor({ config, onBack }) {
   function handleNameKey(e)  { if (e.key === 'Enter') { e.preventDefault(); phoneRef.current?.focus() } }
   function handlePhoneKey(e) { if (e.key === 'Enter') { e.preventDefault(); searchRef.current?.focus() } }
 
-  // Global keyboard shortcuts
-  const saveMemoRef = useRef(null)
-  useEffect(() => {
-    function handleGlobal(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        if (!savedMemoRef.current && itemsRef.current.length) saveMemoRef.current?.()
-      }
-      if (e.key === 'Escape' && resultsRef.current.length === 0) {
-        if (itemsRef.current.length > 0 && !savedMemoRef.current) {
-          if (!confirm('Discard unsaved items and go back?')) return
-        }
-        onBack()
-      }
-    }
-    window.addEventListener('keydown', handleGlobal)
-    return () => window.removeEventListener('keydown', handleGlobal)
-  }, [onBack])
-
   const subtotal = items.reduce((s, i) => s + i.unit_price * i.quantity, 0)
   const gstAmt   = isGstOn ? subtotal * GST_RATE : 0
   const total    = subtotal + gstAmt
 
-  // ── PDF generation via Vercel Python function ─────────────────────────────
   async function openPdf(memo, fd) {
     setGeneratingPdf(true)
     try {
@@ -155,14 +142,15 @@ export default function MemoEditor({ config, onBack }) {
           memoType,
         }),
       })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || `HTTP ${res.status}`)
-      }
+      if (!res.ok) throw new Error('PDF generation failed')
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
-      window.open(url, '_blank')
-      toast.success('PDF opened in new tab')
+      const a = document.createElement('a')
+      a.href = url
+      const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
+      a.download = `${customer.name || 'Walk-in'} (${memoType}) ${dateStr}.pdf`
+      a.click()
+      toast.success('PDF downloaded')
     } catch (err) {
       toast.error(`PDF failed: ${err.message}`)
     } finally {
@@ -170,43 +158,55 @@ export default function MemoEditor({ config, onBack }) {
     }
   }
 
-  // ── Save memo ────────────────────────────────────────────────────────────
   async function saveMemo() {
     if (!items.length) { toast.error('Add at least one product first.'); return }
     setSaving(true)
     try {
       let memo
       const fd = firmDataRef.current
+      const firmId = FIRM_IDS[firm]
+
+      // Generate invoice number if not edit
+      let invoice_number = editMemo?.invoice_number
+      if (!isEdit) {
+        const tenant_id = fd?.tenant_id
+        if (tenant_id) {
+          const invRes = await sbFetch(`/rpc/generate_invoice_number`, {
+            method: 'POST',
+            body: JSON.stringify({ p_tenant_id: tenant_id, p_prefix: 'MEMO' })
+          })
+          invoice_number = invRes
+        }
+      }
+
+      const memoBody = {
+        firm_id:        firmId,
+        customer_name:  customer.name,
+        customer_phone: customer.phone,
+        gst_enabled:    isGstOn,
+        total_amount:   total,
+        subtotal_amount: subtotal,
+        gst_amount:     gstAmt,
+        memo_type:      memoType,
+        payment_status: paymentInfo.payment_status,
+        paid_amount:    paymentInfo.paid_amount,
+        payment_method: paymentInfo.payment_method,
+        invoice_number: invoice_number
+      }
 
       if (isEdit) {
         await sbFetch(`/memos?id=eq.${editMemo.id}`, {
           method: 'PATCH',
           prefer: 'return=minimal',
-          body: JSON.stringify({
-            customer_name:  customer.name,
-            customer_phone: customer.phone,
-            gst_enabled:    isGstOn,
-            total_amount:   total,
-            subtotal_amount: subtotal,
-            gst_amount:     gstAmt,
-          }),
+          body: JSON.stringify(memoBody),
         })
         await sbFetch(`/memo_items?memo_id=eq.${editMemo.id}`, { method: 'DELETE' })
-        memo = editMemo
+        memo = { ...editMemo, ...memoBody }
       } else {
         const res = await sbFetch('/memos', {
           method: 'POST',
           prefer: 'return=representation',
-          body: JSON.stringify({
-            firm_id:        FIRM_IDS[firm],
-            customer_name:  customer.name,
-            customer_phone: customer.phone,
-            gst_enabled:    isGstOn,
-            total_amount:   total,
-            subtotal_amount: subtotal,
-            gst_amount:     gstAmt,
-            memo_type:      memoType,
-          }),
+          body: JSON.stringify(memoBody),
         })
         memo = Array.isArray(res) ? res[0] : res
       }
@@ -220,6 +220,8 @@ export default function MemoEditor({ config, onBack }) {
             product_id: i.product_id,
             quantity:   i.quantity,
             unit_price: i.unit_price,
+            narration:  i.narration,
+            description: i.description
           }))
         ),
       })
@@ -227,8 +229,6 @@ export default function MemoEditor({ config, onBack }) {
       setSavedMemo(memo)
       setSaving(false)
       toast.success(isEdit ? 'Memo updated!' : 'Memo saved!')
-
-      // Auto-open PDF
       await openPdf(memo, fd)
     } catch (err) {
       toast.error(`Save failed: ${err.message}`)
@@ -236,33 +236,6 @@ export default function MemoEditor({ config, onBack }) {
     }
   }
 
-  useEffect(() => { saveMemoRef.current = saveMemo }, [saveMemo])
-
-  // ── WhatsApp ──────────────────────────────────────────────────────────────
-  function buildWhatsAppText() {
-    return [
-      `*${firm} — ${memoType === 'order' ? 'Order Memo' : 'Sale Memo'}*`,
-      `Customer: ${customer.name || 'N/A'} | ${customer.phone || 'N/A'}`, '',
-      ...items.map((i) => `• ${i.name}${i.size ? ` (${i.size})` : ''} × ${i.quantity} = ${fmt(i.unit_price * i.quantity)}`), '',
-      ...(!isGstOn
-        ? [`Subtotal: ${fmt(subtotal)}`]
-        : [`CGST 2.5%: ${fmt(gstAmt / 2)}`, `SGST 2.5%: ${fmt(gstAmt / 2)}`]),
-      `*Total: ${fmt(total)}*`,
-    ].join('\n')
-  }
-
-  function openWhatsApp() {
-    const phone = customer.phone?.replace(/\D/g, '')
-    if (!phone) {
-      navigator.clipboard?.writeText(buildWhatsAppText())
-        .then(() => toast.info('No phone number — message copied to clipboard!'))
-        .catch(() => toast.error('No phone number saved.'))
-      return
-    }
-    window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(buildWhatsAppText())}`, '_blank')
-  }
-
-  // ── UI ────────────────────────────────────────────────────────────────────
   return (
     <div className="pb-6 min-h-screen">
       <div className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/90 px-4 py-3 backdrop-blur">
@@ -270,23 +243,15 @@ export default function MemoEditor({ config, onBack }) {
           <button onClick={onBack} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-sm text-zinc-300 hover:bg-white/[0.08]">←</button>
           <h1 className="text-base font-bold text-white">{isEdit ? '✏️ Edit Memo' : memoType === 'order' ? '📦 New Order' : '💰 New Sale'}</h1>
           <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-400 font-semibold">{memoType.toUpperCase()}</span>
-          <div className="ml-auto hidden md:flex items-center gap-3 text-xs text-zinc-600">
-            <span><kbd className="bg-white/[0.05] px-1.5 py-0.5 rounded text-zinc-500">↑↓</kbd> navigate</span>
-            <span><kbd className="bg-white/[0.05] px-1.5 py-0.5 rounded text-zinc-500">Enter</kbd> add</span>
-            <span><kbd className="bg-white/[0.05] px-1.5 py-0.5 rounded text-zinc-500">Ctrl+S</kbd> save + PDF</span>
-          </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-5">
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-
-          {/* LEFT */}
           <div className="space-y-5">
-            {/* Firm selector */}
             <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500 mb-3">Firm</p>
-              <div className="flex rounded-2xl bg-black/30 p-1.5 gap-1">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500 mb-3">Firm & Payment</p>
+              <div className="flex rounded-2xl bg-black/30 p-1.5 gap-1 mb-4">
                 {['Bombay Hosiery', 'Ace Apparel'].map((f) => (
                   <button key={f}
                     onClick={() => { setFirm(f); setGstOn(false); setSavedMemo(null) }}
@@ -295,22 +260,11 @@ export default function MemoEditor({ config, onBack }) {
                   </button>
                 ))}
               </div>
-              {!isBombay && (
-                <div className="mt-3 flex items-center justify-between px-1">
-                  <span className="text-xs text-zinc-400">GST @ 5% (CGST+SGST)</span>
-                  <button onClick={() => setGstOn((p) => !p)} className={`relative h-7 w-12 rounded-full transition ${gstOn ? 'bg-emerald-500/80' : 'bg-zinc-700'}`}>
-                    <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${gstOn ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                </div>
-              )}
+              <PaymentStatusSelector value={paymentInfo} onChange={setPaymentInfo} />
             </div>
 
-            {/* Customer */}
             <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Customer</p>
-                <p className="text-[11px] text-zinc-600">Enter moves to next field</p>
-              </div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500 mb-3">Customer</p>
               <div className="space-y-3">
                 <input ref={nameRef} value={customer.name} onChange={(e) => setCustomer((p) => ({ ...p, name: e.target.value }))} onKeyDown={handleNameKey}
                   placeholder="Name (optional)" className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-sky-300/40" />
@@ -319,114 +273,70 @@ export default function MemoEditor({ config, onBack }) {
               </div>
             </div>
 
-            {/* Summary */}
-            {items.length > 0 && (
-              <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500 mb-3">Summary</p>
-                <div className="space-y-3 text-sm text-zinc-300">
-                  {!isGstOn && <div className="flex justify-between"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>}
-                  {isGstOn && <>
-                    <div className="flex justify-between"><span>Taxable</span><span>{fmt(subtotal)}</span></div>
-                    <div className="flex justify-between"><span>CGST 2.5%</span><span>{fmt(gstAmt / 2)}</span></div>
-                    <div className="flex justify-between"><span>SGST 2.5%</span><span>{fmt(gstAmt / 2)}</span></div>
-                  </>}
-                  <div className="flex justify-between border-t border-white/10 pt-3 text-base font-bold text-white">
-                    <span>Total</span><span>{fmt(total)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Action buttons */}
-            {items.length > 0 && (
-              <div className="space-y-3">
-                {!savedMemo ? (
-                  <button onClick={saveMemo} disabled={saving || generatingPdf}
-                    className="w-full rounded-2xl bg-sky-400 px-4 py-3.5 text-sm font-bold text-slate-950 hover:bg-sky-300 disabled:opacity-60 transition">
-                    {saving ? 'Saving…' : generatingPdf ? 'Generating PDF…' : isEdit ? '💾  Update → PDF' : '💾  Save → PDF (Ctrl+S)'}
-                  </button>
-                ) : (
-                  <>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <button onClick={() => openPdf(savedMemo, firmData)} disabled={generatingPdf}
-                        className="rounded-2xl bg-white px-4 py-3.5 text-sm font-bold text-zinc-900 hover:bg-zinc-100 disabled:opacity-60 transition">
-                        {generatingPdf ? 'Generating…' : '🧾  View PDF'}
-                      </button>
-                      <button onClick={openWhatsApp}
-                        className="rounded-2xl bg-emerald-500 px-4 py-3.5 text-sm font-bold text-white hover:bg-emerald-400 transition">
-                        📲  WhatsApp
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => { setItems([]); setSavedMemo(null); setCustomer({ name: '', phone: '' }); setQuery(''); setTimeout(() => nameRef.current?.focus(), 50) }}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-300 hover:bg-white/[0.08] transition">
-                      + New Memo
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT */}
-          <div className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Add Products</p>
-                <p className="hidden text-[11px] text-zinc-600 sm:block">Arrow keys + Enter</p>
-              </div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500 mb-3">Add Items</p>
               <div className="relative">
                 <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearchKey}
-                  placeholder="Search by name, SKU, category…"
-                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-sky-300/40" />
+                  placeholder="Search by name, SKU, or category…" className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-sky-300/40" />
                 {results.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
-                    {results.map((product, idx) => (
-                      <button key={product.id} onClick={() => addItem(product)}
-                        className={`flex w-full items-start justify-between gap-4 border-b border-white/6 px-4 py-3 text-left last:border-b-0 ${selectedResult === idx ? 'bg-sky-300/12' : 'hover:bg-white/[0.04]'}`}>
+                  <div className="absolute top-full left-0 right-0 z-20 mt-2 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl">
+                    {results.map((r, i) => (
+                      <button key={r.id} onClick={() => addItem(r)}
+                        className={`flex w-full items-center justify-between px-4 py-3 text-left transition ${selectedResult === i ? 'bg-sky-400/10 text-sky-100' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
                         <div>
-                          <p className="text-sm font-semibold text-white">{product.name}</p>
-                          <p className="mt-1 text-xs text-zinc-500">{product.category || '—'} · Sz {product.size || '—'}</p>
+                          <p className="text-sm font-bold">{r.name}</p>
+                          <p className="text-[10px] uppercase tracking-wider opacity-60">{r.sku} • {r.category} • {r.size}</p>
                         </div>
-                        <p className="text-sm font-bold text-zinc-100 shrink-0">{fmt(product.price)}</p>
+                        <p className="text-sm font-mono font-bold">{fmt(r.price)}</p>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
             </div>
+          </div>
 
-            {items.length > 0 ? (
-              <div className="overflow-hidden rounded-[28px] border border-white/10 bg-zinc-900/80">
-                <div className="border-b border-white/8 bg-black/20 px-5 py-4">
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Items ({items.length})</p>
-                </div>
-                <div className="divide-y divide-white/6">
-                  {items.map((item) => (
-                    <div key={item.product_id} className="px-5 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1 pr-2">
-                          <p className="truncate text-sm font-semibold text-white">{item.name}</p>
-                          <p className="mt-1 text-xs text-zinc-500">{item.size ? `Sz ${item.size} · ` : ''}{fmt(item.unit_price)} each</p>
-                        </div>
-                        <p className="text-sm font-bold text-zinc-100 shrink-0">{fmt(item.unit_price * item.quantity)}</p>
+          <div className="space-y-5">
+            <div className="rounded-[28px] border border-white/10 bg-zinc-900/80 p-5 min-h-[400px]">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500 mb-4">Cart Items ({items.length})</p>
+              <div className="space-y-4">
+                {items.map((item, idx) => (
+                  <div key={item.product_id} className="group relative rounded-2xl border border-white/5 bg-white/[0.02] p-4 transition hover:bg-white/[0.04]">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="text-sm font-bold text-white">{item.name}</p>
+                        <p className="text-[10px] text-zinc-500">{item.sku} • {fmt(item.unit_price)}</p>
                       </div>
-                      <div className="mt-3 flex items-center gap-2">
-                        <button onClick={() => updateQty(item.product_id, item.quantity - 1)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-lg font-bold text-zinc-200 hover:bg-white/[0.1]">−</button>
-                        <span className="w-8 text-center text-sm font-semibold text-white">{item.quantity}</span>
-                        <button onClick={() => updateQty(item.product_id, item.quantity + 1)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-lg font-bold text-zinc-200 hover:bg-white/[0.1]">+</button>
-                        <button onClick={() => updateQty(item.product_id, 0)} className="ml-auto text-xs font-semibold text-red-400 hover:text-red-300">Remove</button>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => updateQty(item.product_id, item.quantity - 1)} className="h-7 w-7 rounded-full bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white">-</button>
+                        <span className="text-sm font-mono w-4 text-center">{item.quantity}</span>
+                        <button onClick={() => updateQty(item.product_id, item.quantity + 1)} className="h-7 w-7 rounded-full bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white">+</button>
                       </div>
                     </div>
-                  ))}
+                    <textarea 
+                      value={item.narration || ''} 
+                      onChange={(e) => updateItem(idx, 'narration', e.target.value)}
+                      placeholder="Add narration/description..."
+                      className="w-full mt-2 bg-transparent border-none text-xs text-zinc-400 focus:ring-0 p-0 resize-none h-8"
+                    />
+                  </div>
+                ))}
+                {items.length === 0 && <p className="py-20 text-center text-sm text-zinc-600">No items added yet.</p>}
+              </div>
+
+              {items.length > 0 && (
+                <div className="mt-8 border-t border-white/10 pt-5 space-y-2">
+                  <div className="flex justify-between text-sm text-zinc-400"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
+                  {isGstOn && <div className="flex justify-between text-sm text-zinc-400"><span>GST (5%)</span><span>{fmt(gstAmt)}</span></div>}
+                  <div className="flex justify-between text-lg font-bold text-white pt-2"><span>Total</span><span>{fmt(total)}</span></div>
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-[28px] border border-dashed border-white/12 bg-zinc-900/60 px-8 py-16 text-center">
-                <p className="text-sm text-zinc-400">Search and add products above</p>
-                <p className="mt-2 text-xs text-zinc-600">Use arrow keys and Enter to move quickly.</p>
-              </div>
-            )}
+              )}
+            </div>
+
+            <button onClick={saveMemo} disabled={saving || !items.length}
+              className="w-full rounded-[22px] bg-sky-400 py-4 text-sm font-bold text-slate-950 transition hover:bg-sky-300 disabled:opacity-50 disabled:cursor-not-allowed">
+              {saving ? 'Saving...' : 'Save & Download PDF'}
+            </button>
           </div>
         </div>
       </div>
